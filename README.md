@@ -4,9 +4,9 @@ Manufacturer-independent Home Assistant HACS integration for coordinating AC-cou
 
 ## Safety model
 
-The controller is a planner, not a battery adapter. An adapter must expose SOC, measured AC power, and a writable command entity with an explicitly selected Home Assistant service. All participating batteries must have fresh, valid SOC readings before a nonzero command is planned. SOC limits, per-battery power caps, a deadband, rate limit, command hysteresis, and a direction reversal guard constrain dispatch. In a fail-safe condition the plan is zero power.
+The controller only distributes an externally supplied pool power request; it does not derive its own grid target. An adapter must expose SOC, measured AC power, and a writable command entity with an explicitly selected Home Assistant service. All participating batteries must have fresh, valid SOC readings before a nonzero command is planned. Configurable SOC limits and power caps apply per battery; the default SOC interval is 0–100%. A deadband, aggregate rate limit, command hysteresis, and direction reversal guard constrain dispatch. In a fail-safe condition the plan is zero power.
 
-The weighted virtual SOC is calculated from configured usable capacities. Dispatch prioritizes the lowest SOC for charging and the highest SOC for discharging, so batteries are not intentionally commanded in opposing directions. External target power can be supplied to the planner; autonomous grid control interprets positive grid power as import and negative as export. A Shelly Pro 3EM is configured as a standard Home Assistant sensor entity.
+The weighted virtual SOC is calculated from configured capacities. Dispatch prioritizes the lowest SOC for charging and the highest SOC for discharging, so batteries are not intentionally commanded in opposing directions. Temperature measurements are intended for later manual comparison with SOC and charging power over time; they do not currently alter control decisions.
 
 ## Current status
 

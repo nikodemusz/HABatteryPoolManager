@@ -19,8 +19,8 @@ class BatteryConfig:
     power_entity: str
     command_entity: str
     command_service: str
-    min_soc: float = 15.0
-    max_soc: float = 95.0
+    min_soc: float = 0.0
+    max_soc: float = 100.0
     max_charge_w: float = 800.0
     max_discharge_w: float = 800.0
 
