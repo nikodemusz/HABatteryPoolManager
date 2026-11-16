@@ -17,7 +17,7 @@ This repository contains an initial planner MVP and a minimal Home Assistant int
 - [Omnibattery](https://github.com/ffunes/Omnibattery) describes multi-battery coordination and is licensed GPL-3.0.
 - [marstek_venus_ha](https://github.com/diegoschlauri/marstek_venus_ha) describes entity-based battery adapters and is licensed GPL-3.0.
 
-These repositories were consulted for feature-level ideas only. No source code was copied. This project uses an original implementation and MIT license.
+These repositories were consulted for feature-level ideas only. No source code was copied. This repository retains the GPL-3.0 license from its initial commit.
 
 ## Development
 
