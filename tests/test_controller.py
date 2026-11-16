@@ -36,7 +36,9 @@ def test_invalid_soc_forces_zero_commands():
 
 def test_charge_prefers_lower_soc_and_caps_ramp():
     plan = setup_controller().plan(readings(), -500, NOW)
-    assert plan.commands[0].battery == "venus_c"
+    allocations = {command.battery: command.power_w for command in plan.commands}
+    assert allocations["venus_e"] == 500
+    assert allocations["venus_c"] == 0
     assert all(command.direction in (Direction.CHARGE, Direction.IDLE) for command in plan.commands)
     assert sum(command.power_w for command in plan.commands) <= 500
 
@@ -57,7 +59,7 @@ def test_discharge_respects_per_battery_soc_floor():
     controller = PoolController(ControllerConfig(batteries, deadband_w=40, ramp_w_per_minute=6000, reversal_guard_seconds=0))
     values = readings(c_soc=20, e_soc=0)
     plan = controller.plan(values, 500, NOW)
-    assert [command.battery for command in plan.commands if command.power_w] == ["venus_c"]
+    assert all(command.power_w == 0 for command in plan.commands)
 
 
 def test_pool_soc_is_capacity_weighted():
