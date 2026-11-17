@@ -1,0 +1,80 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Battery Pool",
+        "description": "Pool anlegen. Batteriesysteme danach über Konfigurieren hinzufügen.",
+        "data": {
+          "name": "Name"
+        }
+      }
+    },
+    "error": {
+      "required_name": "Bitte einen Namen eingeben."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "add_battery": "Batteriesystem hinzufügen",
+          "edit_battery": "Batteriesystem bearbeiten",
+          "remove_battery": "Batteriesystem entfernen"
+        }
+      },
+      "confirm_remove": {
+        "title": "Entfernen bestätigen",
+        "description": "{name} aus diesem Pool entfernen?"
+      },
+      "add_battery": {
+        "title": "Batteriesystem",
+        "description": "Entities und Grenzen zuordnen. Die Leistungsvorgabe muss ein number oder input_number in Watt sein. Diese Einrichtung steuert noch keine Geräte.",
+        "data": {
+          "name": "Name",
+          "capacity_kwh": "Kapazität (kWh)",
+          "soc_entity": "Ladezustand (%)",
+          "power_entity": "Gemessene AC-Leistung (W)",
+          "command_entity": "Entity für Leistungsvorgabe",
+          "min_soc": "Minimaler Ladezustand (%)",
+          "max_soc": "Maximaler Ladezustand (%)",
+          "max_charge_w": "Maximale Ladeleistung (W)",
+          "max_discharge_w": "Maximale Entladeleistung (W)"
+        }
+      },
+      "battery": {
+        "title": "Batteriesystem",
+        "description": "Entities und Grenzen zuordnen. Die Leistungsvorgabe muss ein number oder input_number in Watt sein. Diese Einrichtung steuert noch keine Geräte.",
+        "data": {
+          "name": "Name",
+          "capacity_kwh": "Kapazität (kWh)",
+          "soc_entity": "Ladezustand (%)",
+          "power_entity": "Gemessene AC-Leistung (W)",
+          "command_entity": "Entity für Leistungsvorgabe",
+          "min_soc": "Minimaler Ladezustand (%)",
+          "max_soc": "Maximaler Ladezustand (%)",
+          "max_charge_w": "Maximale Ladeleistung (W)",
+          "max_discharge_w": "Maximale Entladeleistung (W)"
+        }
+      },
+      "edit_battery": {
+        "title": "Batteriesystem auswählen",
+        "data": {
+          "battery": "Batteriesystem"
+        }
+      },
+      "remove_battery": {
+        "title": "Batteriesystem auswählen",
+        "data": {
+          "battery": "Batteriesystem"
+        }
+      }
+    },
+    "error": {
+      "required_name": "Bitte einen Namen eingeben.",
+      "duplicate_name": "Ein Batteriesystem mit diesem Namen existiert bereits.",
+      "invalid_soc_range": "Der minimale Ladezustand muss kleiner als der maximale sein.",
+      "distinct_sensors": "Separate Sensoren für Ladezustand und Leistung auswählen.",
+      "entity_missing": "Diese Entity existiert nicht mehr."
+    }
+  }
+}
