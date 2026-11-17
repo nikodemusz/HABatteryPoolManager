@@ -1,0 +1,80 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Battery Pool",
+        "description": "Create a pool, then use Configure to add batteries.",
+        "data": {
+          "name": "Name"
+        }
+      }
+    },
+    "error": {
+      "required_name": "Enter a name."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "add_battery": "Add battery",
+          "edit_battery": "Edit battery",
+          "remove_battery": "Remove battery"
+        }
+      },
+      "confirm_remove": {
+        "title": "Confirm removal",
+        "description": "Remove {name} from this pool?"
+      },
+      "add_battery": {
+        "title": "Battery system",
+        "description": "Assign entities and limits. The command entity must be a number or input_number in watts. This setup does not control devices yet.",
+        "data": {
+          "name": "Name",
+          "capacity_kwh": "Capacity (kWh)",
+          "soc_entity": "State of charge (%)",
+          "power_entity": "Measured AC power (W)",
+          "command_entity": "Power command entity",
+          "min_soc": "Minimum SOC (%)",
+          "max_soc": "Maximum SOC (%)",
+          "max_charge_w": "Maximum charging power (W)",
+          "max_discharge_w": "Maximum discharging power (W)"
+        }
+      },
+      "battery": {
+        "title": "Battery system",
+        "description": "Assign entities and limits. The command entity must be a number or input_number in watts. This setup does not control devices yet.",
+        "data": {
+          "name": "Name",
+          "capacity_kwh": "Capacity (kWh)",
+          "soc_entity": "State of charge (%)",
+          "power_entity": "Measured AC power (W)",
+          "command_entity": "Power command entity",
+          "min_soc": "Minimum SOC (%)",
+          "max_soc": "Maximum SOC (%)",
+          "max_charge_w": "Maximum charging power (W)",
+          "max_discharge_w": "Maximum discharging power (W)"
+        }
+      },
+      "edit_battery": {
+        "title": "Select battery",
+        "data": {
+          "battery": "Battery"
+        }
+      },
+      "remove_battery": {
+        "title": "Select battery",
+        "data": {
+          "battery": "Battery"
+        }
+      }
+    },
+    "error": {
+      "required_name": "Enter a name.",
+      "duplicate_name": "A battery with this name already exists.",
+      "invalid_soc_range": "Minimum SOC must be lower than maximum SOC.",
+      "distinct_sensors": "Choose separate SOC and power sensors.",
+      "entity_missing": "This entity no longer exists."
+    }
+  }
+}

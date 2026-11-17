@@ -10,7 +10,7 @@ The weighted virtual SOC is calculated from configured capacities. Dispatch prio
 
 ## Current status
 
-This repository contains an initial planner MVP and a minimal Home Assistant integration shell. It does not yet provide a UI battery-adapter editor, autonomous coordinator, entity platform, diagnostics panel, or live service-call executor. Install and review in simulation first; do not connect live write services until adapter semantics and safe release behavior are configured and tested on the actual battery.
+This repository contains an initial planner MVP and a minimal Home Assistant integration shell. It provides an options editor for battery systems and entity mappings. It does not yet provide an autonomous coordinator, entity platform, diagnostics panel, or live service-call executor. Install and review in simulation first; do not connect live write services until adapter semantics and safe release behavior are configured and tested on the actual battery.
 
 ## References
 
@@ -21,4 +21,6 @@ These repositories were consulted for feature-level ideas only. No source code w
 
 ## Development
 
-Copy `custom_components/virtual_battery_pool` to Home Assistant's `custom_components` directory, restart, and add the integration. The current config flow only creates a placeholder entry; controller configuration is currently a Python API. Python planner tests are in `tests/`.
+Copy `custom_components/virtual_battery_pool` to Home Assistant's `custom_components` directory, restart, and add the integration. After creating a pool, open Settings → Devices & services → Virtual Battery Pool → Configure. Add a battery with its name, capacity, SOC sensor (%), measured AC power sensor (W), and writable power command entity (number or input_number in W). Set SOC limits and charge/discharge power caps. The matching set_value service is saved automatically. Reopen Configure to add more batteries, edit mappings, or remove a battery after confirmation. Each pool stores its batteries independently in config entry options; existing pools require no migration. These settings do not execute device commands; controller operation remains a Python API. Python planner tests are in `tests/`.
+
+Run tests with `python -m pip install homeassistant pytest pytest-asyncio` and `python -m pytest -q -o asyncio_default_fixture_loop_scope=function` using a Python version supported by Home Assistant. The options-flow tests use Home Assistant flow/selector classes without starting device integrations.
