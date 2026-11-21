@@ -28,10 +28,12 @@ def battery_schema(values=None):
         "soc_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))),
         "power_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))),
         "command_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))),
-        "min_soc": (0.0, vol.All(finite_number, vol.Range(min=0, max=100))),
-        "max_soc": (100.0, vol.All(finite_number, vol.Range(min=0, max=100))),
-        "max_charge_w": (800.0, vol.All(finite_number, vol.Range(min=0))),
-        "max_discharge_w": (800.0, vol.All(finite_number, vol.Range(min=0))),
+        "positive_discharge": (True, selector.BooleanSelector()),
+        "adapter_confirmed": (False, selector.BooleanSelector()),
+        "min_soc": (20.0, vol.All(finite_number, vol.Range(min=0, max=100))),
+        "max_soc": (80.0, vol.All(finite_number, vol.Range(min=0, max=100))),
+        "max_charge_w": (300.0, vol.All(finite_number, vol.Range(min=1))),
+        "max_discharge_w": (300.0, vol.All(finite_number, vol.Range(min=1))),
     }
     for key, (default, validator) in definitions.items():
         default = values.get(key, default)
@@ -64,18 +66,19 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
     def __init__(self):
         self._batteries = None
         self._selected = None
+        self._settings = {}
 
     async def async_step_init(self, user_input=None):
         if self._batteries is None:
             self._batteries = deepcopy(self.config_entry.options.get(CONF_BATTERIES, []))
-        menu = ["add_battery"]
+        menu = ["add_battery", "control_settings"]
         if self._batteries:
             menu.extend(["edit_battery", "remove_battery"])
         return self.async_show_menu(step_id="init", menu_options=menu)
 
     def _save(self):
         return self.async_create_entry(
-            title="", data={**self.config_entry.options, CONF_BATTERIES: self._batteries}
+            title="", data={**self.config_entry.options, CONF_BATTERIES: self._batteries, **self._settings}
         )
 
     async def async_step_add_battery(self, user_input=None):
@@ -98,6 +101,11 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
             for field in ("soc_entity", "power_entity", "command_entity"):
                 if self.hass.states.get(data[field]) is None:
                     errors[field] = "entity_missing"
+            if any(b["command_entity"] == data["command_entity"] and b["id"] != self._selected for b in self._batteries):
+                errors["command_entity"] = "duplicate_command"
+            for entry in self.hass.config_entries.async_entries(DOMAIN):
+                if entry.entry_id != self.config_entry.entry_id and any(b["command_entity"] == data["command_entity"] for b in entry.options.get(CONF_BATTERIES, [])):
+                    errors["command_entity"] = "duplicate_command"
             if not errors:
                 data["id"] = existing.get("id", uuid4().hex)
                 data["command_service"] = data["command_entity"].split(".")[0] + ".set_value"
@@ -137,3 +145,29 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
             self._batteries.remove(battery)
             return self._save()
         return self.async_show_form(step_id="confirm_remove", data_schema=vol.Schema({}), description_placeholders={"name": battery["name"]})
+
+    async def async_step_control_settings(self, user_input=None):
+        values = dict(self.config_entry.options)
+        errors = {}
+        if user_input is not None:
+            values.update(user_input)
+            if values["control_mode"] == "autonomous":
+                entity = self.hass.states.get(values.get("grid_power_entity", ""))
+                if entity is None or entity.attributes.get("unit_of_measurement") != "W":
+                    errors["grid_power_entity"] = "grid_required"
+                if not values.get("grid_confirmed"):
+                    errors["grid_confirmed"] = "grid_confirmation_required"
+            if values["live_control"] and (not self._batteries or not all(b.get("adapter_confirmed", False) for b in self._batteries)):
+                errors["live_control"] = "adapters_required"
+            if not errors:
+                self._settings = {**user_input, "grid_power_entity": user_input.get("grid_power_entity")}
+                return self._save()
+        schema = {
+            vol.Required("control_mode", default=values.get("control_mode", "external")): selector.SelectSelector(selector.SelectSelectorConfig(options=["external", "autonomous"], translation_key="control_mode")),
+            vol.Required("live_control", default=values.get("live_control", False)): selector.BooleanSelector(),
+            vol.Required("grid_confirmed", default=values.get("grid_confirmed", False)): selector.BooleanSelector(),
+            vol.Required("grid_target_w", default=values.get("grid_target_w", 20)): vol.All(finite_number, vol.Range(min=0, max=10000)),
+        }
+        marker = vol.Optional("grid_power_entity", default=values["grid_power_entity"]) if values.get("grid_power_entity") else vol.Optional("grid_power_entity")
+        schema[marker] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
+        return self.async_show_form(step_id="control_settings", data_schema=vol.Schema(schema), errors=errors)

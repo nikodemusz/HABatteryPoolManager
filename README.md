@@ -1,26 +1,85 @@
 # Virtual Battery Pool
 
-Manufacturer-independent Home Assistant HACS integration for coordinating AC-coupled batteries through explicitly configured Home Assistant entities and services. No vendor protocol drivers are included.
+A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.2 adds operating entities, periodic planning, signed-watt command execution, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2.
 
-## Safety model
+## Supported battery adapters
 
-The controller only distributes an externally supplied pool power request; it does not derive its own grid target. An adapter must expose SOC, measured AC power, and a writable command entity with an explicitly selected Home Assistant service. All participating batteries must have fresh, valid SOC readings before a nonzero command is planned. Configurable SOC limits and power caps apply per battery; the default SOC interval is 0–100%. A deadband, aggregate rate limit, command hysteresis, and direction reversal guard constrain dispatch. In a fail-safe condition the plan is zero power.
+Each battery must expose:
 
-The weighted virtual SOC is calculated from configured capacities. Dispatch prioritizes the lowest SOC for charging and the highest SOC for discharging, so batteries are not intentionally commanded in opposing directions. Temperature measurements are intended for later manual comparison with SOC and charging power over time; they do not currently alter control decisions.
+- A current SOC sensor in **%**, from 0 to 100.
+- A measured AC power sensor in **W**.
+- A writable `number` or `input_number` in **W**, accepting both charging and discharging as signed values, plus **0 W to stop**.
 
-## Current status
+Both measured and commanded AC power must use the same sign convention for that battery. The editor lets you select positive = discharge (default) or positive = charge. Different batteries may use different conventions. The pool entities always use **positive = discharge, negative = charge**.
 
-This repository contains an initial planner MVP and a minimal Home Assistant integration shell. It provides an options editor for battery systems and entity mappings. It does not yet provide an autonomous coordinator, entity platform, diagnostics panel, or live service-call executor. Install and review in simulation first; do not connect live write services until adapter semantics and safe release behavior are configured and tested on the actual battery.
+The device must already be in the appropriate remote-control mode and have a **device-side command watchdog** that stops power when commands cease. The integration refreshes every 5 seconds; configure a watchdog appropriate to the device (typically 15–30 seconds, allowing for its communication interval). Verify the actual device behavior before confirming the adapter contract. A plain `input_number` needs a separate device bridge and watchdog; storing a helper value alone does not control hardware.
 
-## References
+Unsigned power limiters, separate charge/discharge entities, mode selectors, current limits in amperes, and vendor APIs need an adapter outside this integration. No vendor protocol drivers are included. All pool batteries must be connected behind the same grid meter when using self-consumption mode. Do not let another controller write to the same battery simultaneously.
 
-- [Omnibattery](https://github.com/ffunes/Omnibattery) describes multi-battery coordination and is licensed GPL-3.0.
-- [marstek_venus_ha](https://github.com/diegoschlauri/marstek_venus_ha) describes entity-based battery adapters and is licensed GPL-3.0.
+## Installation and first use
 
-These repositories were consulted for feature-level ideas only. No source code was copied. This repository retains the GPL-3.0 license from its initial commit.
+1. Install through HACS as a custom integration repository, or copy `custom_components/virtual_battery_pool` into Home Assistant's `custom_components` directory, then restart Home Assistant.
+2. Add **Virtual Battery Pool** in Settings → Devices & services and give the pool a name.
+3. Open **Configure → Add battery system**. Choose the individual battery's entities, usable capacity, SOC limits, power limits, and sign convention. English and German help explains every field.
+4. Repeat for other batteries. Command entities cannot be assigned twice, including across pools.
+5. Open **Control mode and live output**. Leave live output **off** for simulation. Choose external request or grid self-consumption.
+6. Open the pool device and turn on **Pool control**. Inspect **Control status**, **Pool state of charge**, **Measured AC power**, and **Planned AC power**. Status attributes show the plan per battery, selected mode, simulation flag, and any latched fault. Simulation sends **no device commands**, including stop commands.
+7. After verifying each adapter's sign, zero behavior, remote mode, and watchdog on the actual device, confirm its adapter contract in the battery editor and enable **live output** in the pool settings. This reloads the integration and leaves the pool **off**. Turn on its switch to start. Activation rejects missing services, unavailable command entities, incompatible units/ranges, and live collisions with another pool.
 
-## Development
+**Pool control is off after every restart or options change.** A previous power request is never restored. Existing battery mappings remain intact; existing SOC/power limits are preserved rather than silently overwritten. Existing adapters need to be edited and confirmed before live output is possible. Review older 0–100 % or 800 W settings if you want the new conservative defaults.
 
-Copy `custom_components/virtual_battery_pool` to Home Assistant's `custom_components` directory, restart, and add the integration. After creating a pool, open Settings → Devices & services → Virtual Battery Pool → Configure. Add a battery with its name, capacity, SOC sensor (%), measured AC power sensor (W), and writable power command entity (number or input_number in W). Set SOC limits and charge/discharge power caps. The matching set_value service is saved automatically. Reopen Configure to add more batteries, edit mappings, or remove a battery after confirmation. Each pool stores its batteries independently in config entry options; existing pools require no migration. These settings do not execute device commands; controller operation remains a Python API. Python planner tests are in `tests/`.
+## Operating modes
 
-Run tests with `python -m pip install homeassistant pytest pytest-asyncio` and `python -m pytest -q -o asyncio_default_fixture_loop_scope=function` using a Python version supported by Home Assistant. The options-flow tests use Home Assistant flow/selector classes without starting device integrations.
+### External request
+
+Set the pool's new **Power request (+ discharge / − charge)** number entity using `number.set_value`. For example, `500` requests up to 500 W of pool discharge; `-300` requests up to 300 W of charging. The planner may allocate less because of SOC, ramp, or power limits.
+
+Refresh the request **more frequently than 60 seconds**, including if its value is unchanged. After 60 seconds without a fresh service call the request expires and the planner requests zero at its next 5-second tick (plus device communication time). A 15-second automation interval is suitable. A zero request stops immediately; switching **Pool control** off also clears the request. The number entity retains the last requested value after expiry; **Control status** reports that a fresh request is needed.
+
+### Grid self-consumption
+
+Select a whole-home grid connection power sensor in **W**, **positive for import and negative for export**, and confirm this convention. It must include all the batteries and the rest of the home. Do not choose PV generation or an individual battery's power.
+
+The planner requests `grid power + measured battery discharge − desired residual grid import`. The default residual import is **20 W**, avoiding an exact zero target. Surplus export results in charging; excess import results in discharge, subject to all limits. The external request number is ignored in this mode. Missing or stale grid data requests zero power.
+
+## Default protection settings
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| Live device output | Off | Simulation until explicitly configured |
+| Pool switch | Off | No automatic restart after a reboot/reload |
+| SOC reserve / ceiling | 20 % / 80 % | No discharge at/below reserve; no charge at/above ceiling |
+| Charge / discharge limit | 300 W each per battery | Must also fit device capabilities and BMS limits |
+| Aggregate power increase | 300 W/min | Ramp increases, including first start; stops/reductions are immediate |
+| Direction reversal guard | 30 s at zero | Stops before changing charging direction |
+| Power deadband | 50 W | Small requests result in zero |
+| Maximum data age | 60 s | SOC, measured power and grid data must be valid and freshly reported |
+| External request lifetime | 60 s | Requires continuing requests |
+| Command heartbeat | 5 s | Device-side watchdog must stop on lost communication |
+
+SOC is weighted by usable capacity. Charging favors the lowest eligible SOC; discharging favors the highest. Commands never intentionally charge one participating battery while discharging another. All participating batteries need valid data, including those at their limits. Repeated identical sensor reports count as fresh reports; a sensor integration must not disguise stale device data as fresh readings.
+
+These defaults reduce routine depth of discharge and power stress; they cannot suit every chemistry or replace the manufacturer's BMS. Temperature, cell voltage, current, and balancing protections remain with the battery/BMS. Temperature-based software control is not implemented.
+
+## Failure and stop behavior
+
+- Invalid/unknown/unavailable/stale sensor data or expired requests produce a zero plan. Normal operation can resume once fresh valid input returns.
+- Before each live write, the integration checks service availability, command units, signed limits, and step alignment. Values are rounded toward zero so device step sizes do not exceed the planned magnitude.
+- Reductions and reversals are sent before increases. Calls are serialized and individually limited to 5 seconds.
+- A write failure latches **fault**, attempts zero for **every** confirmed adapter even if one fails, and blocks further nonzero commands. Zero retries continue while running, including after switching off if an earlier stop failed. Fix the cause, switch off, and reactivate to reset the fault.
+- Switching off, reloading/unloading, and a normal Home Assistant shutdown attempt zero on all confirmed adapters that were active. A failed stop remains visible in the fault attribute.
+- Service success is not proof of physical power reaching zero. A power/network failure, a hung device, or abrupt process termination can prevent software stop commands. The required **device-side watchdog** handles this case. The integration does not configure the watchdog or switch vendor operating modes for you.
+
+## Development and validation
+
+Use Python 3.14 and `python -m pip install -r requirements-dev.txt`, then run:
+
+```
+python -m pytest -q -o asyncio_default_fixture_loop_scope=function
+```
+
+Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
+
+## References and license
+
+[Omnibattery](https://github.com/ffunes/Omnibattery) and [marstek_venus_ha](https://github.com/diegoschlauri/marstek_venus_ha) were consulted for feature-level ideas only; no source code was copied. This project retains its GPL-3.0 license.

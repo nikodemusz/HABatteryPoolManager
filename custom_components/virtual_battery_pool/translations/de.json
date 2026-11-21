@@ -22,7 +22,8 @@
         "menu_options": {
           "add_battery": "Batteriesystem hinzufügen",
           "edit_battery": "Batteriesystem bearbeiten",
-          "remove_battery": "Batteriesystem entfernen"
+          "remove_battery": "Batteriesystem entfernen",
+          "control_settings": "Betriebsart und Live-Ausgabe"
         }
       },
       "confirm_remove": {
@@ -31,7 +32,7 @@
       },
       "add_battery": {
         "title": "Batteriesystem hinzufügen",
-        "description": "Ordne ausschließlich Entities desselben Batteriesystems zu. Vergleiche im Zweifel die Einheiten und Werte unter Entwicklerwerkzeuge → Zustände. Der Editor speichert bisher nur die Zuordnung und Grenzen; er sendet noch keine Steuerbefehle.",
+        "description": "Entities desselben Batteriesystems zuordnen. Starte in der Simulation und prüfe den Plan in den Status-Entities. Die Live-Ausgabe wird separat unter „Betriebsart und Live-Ausgabe“ freigegeben. BMS und Geräteschutz bleiben erforderlich.",
         "data": {
           "name": "Name dieses Batteriesystems",
           "capacity_kwh": "Nutzbare Kapazität dieses Batteriesystems (kWh)",
@@ -41,23 +42,27 @@
           "min_soc": "Untere Entladegrenze (%)",
           "max_soc": "Obere Ladegrenze (%)",
           "max_charge_w": "Maximale AC-Ladeleistung dieses Batteriesystems (W)",
-          "max_discharge_w": "Maximale AC-Entladeleistung dieses Batteriesystems (W)"
+          "max_discharge_w": "Maximale AC-Entladeleistung dieses Batteriesystems (W)",
+          "positive_discharge": "Positive Werte bedeuten Entladen",
+          "adapter_confirmed": "Geräteanbindung und Ausfallschutz geprüft"
         },
         "data_description": {
           "name": "Frei wählbarer, innerhalb dieses Pools eindeutiger Name, z. B. „Speicher Garage“. Gemeint ist ein einzelnes Batteriesystem, nicht der gesamte Pool.",
           "capacity_kwh": "Die nutzbare Energie dieses Batteriesystems laut Hersteller oder eigener Konfiguration, z. B. 5,12 kWh. Dieser Wert dient der Gewichtung des Pool-Ladezustands. Keine Leistung in W und keinen Sensor auswählen; eine Zahl größer als 0 eingeben.",
           "soc_entity": "Den Sensor wählen, der den aktuellen Ladezustand (SOC) genau dieses Batteriesystems als Zahl von 0 bis 100 in % meldet, z. B. sensor.speicher_garage_soc. Keinen Spannungs-, Energie- oder Pool-Sensor wählen.",
           "power_entity": "Den Sensor für die aktuell gemessene Lade-/Entladeleistung auf der AC-Seite genau dieses Batteriesystems in Watt wählen, z. B. sensor.speicher_garage_ac_power. Keinen Energiezähler (kWh), Hausverbrauch, Netzanschluss- oder Sollwert wählen. Werte in kW müssen zuvor in W umgerechnet werden.",
-          "command_entity": "Die number- oder input_number-Entity wählen, über die eine Leistungsvorgabe in Watt an dieses Batteriesystem übergeben werden kann, z. B. number.speicher_garage_power_setpoint. Ein reiner Messsensor, Ein/Aus-Schalter, SOC-Ziel oder Stromlimit in A passt nicht. Ein input_number ist nur geeignet, wenn eine separate Anbindung seinen Wert an den Speicher weitergibt. Gespeichert wird number.set_value bzw. input_number.set_value; Vorzeichen und Betriebsmodus des Geräts müssen zur späteren Steuerung passen.",
-          "min_soc": "Unterhalb dieses Ladezustands soll der Planer keine weitere Entladung vorsehen, z. B. 20 % als Reserve. Wert zwischen 0 und 100; muss kleiner als die obere Ladegrenze sein. Ändert keine Geräteeinstellung.",
-          "max_soc": "Ab diesem Ladezustand soll der Planer keine weitere Ladung vorsehen, z. B. 90 %. Wert zwischen 0 und 100; muss größer als die untere Entladegrenze sein. Ändert keine Geräteeinstellung.",
-          "max_charge_w": "Die für dieses Batteriesystem zulässige AC-Ladeleistung als positiven Watt-Wert eingeben, z. B. 800. Herstellergrenze und vorhandene Gerätekonfiguration berücksichtigen. Keine Kapazität in kWh und keine Gesamtleistung des Pools eingeben. Der vorhandene Planer benötigt Werte größer als 0.",
-          "max_discharge_w": "Die für dieses Batteriesystem zulässige AC-Entladeleistung als positiven Watt-Wert eingeben, z. B. 800. Herstellergrenze und vorhandene Gerätekonfiguration berücksichtigen. Keine negativen Vorzeichen verwenden. Der vorhandene Planer benötigt Werte größer als 0."
+          "command_entity": "Beschreibbare number- oder input_number-Entity für vorzeichenbehaftete Leistung in W. Der Wertebereich muss 0 sowie die konfigurierte Lade- und Entladeleistung abdecken. Ein positiver reiner Leistungsbegrenzer, SOC-Ziel, A-Stromlimit oder Messsensor reicht nicht aus. input_number steuert ein Gerät nur über eine separate Weiterleitung. Aufgerufen wird der passende set_value-Dienst.",
+          "min_soc": "Unterhalb dieses Ladezustands wird der Planer keine weitere Entladung vorsehen, z. B. 20 % als Reserve. Wert zwischen 0 und 100; muss kleiner als die obere Ladegrenze sein. Ändert keine Geräteeinstellung.",
+          "max_soc": "Ab diesem Ladezustand wird der Planer keine weitere Ladung vorsehen, z. B. 90 %. Wert zwischen 0 und 100; muss größer als die untere Entladegrenze sein. Ändert keine Geräteeinstellung.",
+          "max_charge_w": "Positive Obergrenze pro Speicher in W; Standard 300 W. Größer als 0 und höchstens so hoch wie vom Hersteller, BMS und der Gerätekonfiguration erlaubt. Keine Kapazität in kWh oder Gesamtleistung des Pools. Dies ist eine Softwaregrenze, kein Ersatz für den Geräteschutz.",
+          "max_discharge_w": "Positive Obergrenze pro Speicher in W; Standard 300 W. Größer als 0 und höchstens so hoch wie vom Hersteller, BMS und der Gerätekonfiguration erlaubt. Kein negatives Vorzeichen verwenden. Dies ist eine Softwaregrenze, kein Ersatz für den Geräteschutz.",
+          "positive_discharge": "Gilt für Leistungsvorgabe UND gemessene AC-Leistung: eingeschaltet = positiv entladen, negativ laden; ausgeschaltet = positiv laden, negativ entladen. Falls die Entities unterschiedliche Vorzeichen verwenden, zuvor einen passenden Adapter erstellen.",
+          "adapter_confirmed": "Nur bestätigen, wenn die Entity beide Leistungsrichtungen als vorzeichenbehaftete Watt-Werte unterstützt, 0 W sicher stoppt, der richtige Fernsteuerungsmodus am Gerät aktiv ist und ein geräteseitiger Timeout bei ausbleibenden Befehlen sicher auf 0 zurückfällt. Ein input_number benötigt eine separate Weiterleitung einschließlich Watchdog. Ohne diese Bestätigung bleibt die Live-Ausgabe gesperrt."
         }
       },
       "battery": {
         "title": "Batteriesystem bearbeiten",
-        "description": "Ordne ausschließlich Entities desselben Batteriesystems zu. Vergleiche im Zweifel die Einheiten und Werte unter Entwicklerwerkzeuge → Zustände. Der Editor speichert bisher nur die Zuordnung und Grenzen; er sendet noch keine Steuerbefehle.",
+        "description": "Entities desselben Batteriesystems zuordnen. Starte in der Simulation und prüfe den Plan in den Status-Entities. Die Live-Ausgabe wird separat unter „Betriebsart und Live-Ausgabe“ freigegeben. BMS und Geräteschutz bleiben erforderlich.",
         "data": {
           "name": "Name dieses Batteriesystems",
           "capacity_kwh": "Nutzbare Kapazität dieses Batteriesystems (kWh)",
@@ -67,18 +72,22 @@
           "min_soc": "Untere Entladegrenze (%)",
           "max_soc": "Obere Ladegrenze (%)",
           "max_charge_w": "Maximale AC-Ladeleistung dieses Batteriesystems (W)",
-          "max_discharge_w": "Maximale AC-Entladeleistung dieses Batteriesystems (W)"
+          "max_discharge_w": "Maximale AC-Entladeleistung dieses Batteriesystems (W)",
+          "positive_discharge": "Positive Werte bedeuten Entladen",
+          "adapter_confirmed": "Geräteanbindung und Ausfallschutz geprüft"
         },
         "data_description": {
           "name": "Frei wählbarer, innerhalb dieses Pools eindeutiger Name, z. B. „Speicher Garage“. Gemeint ist ein einzelnes Batteriesystem, nicht der gesamte Pool.",
           "capacity_kwh": "Die nutzbare Energie dieses Batteriesystems laut Hersteller oder eigener Konfiguration, z. B. 5,12 kWh. Dieser Wert dient der Gewichtung des Pool-Ladezustands. Keine Leistung in W und keinen Sensor auswählen; eine Zahl größer als 0 eingeben.",
           "soc_entity": "Den Sensor wählen, der den aktuellen Ladezustand (SOC) genau dieses Batteriesystems als Zahl von 0 bis 100 in % meldet, z. B. sensor.speicher_garage_soc. Keinen Spannungs-, Energie- oder Pool-Sensor wählen.",
           "power_entity": "Den Sensor für die aktuell gemessene Lade-/Entladeleistung auf der AC-Seite genau dieses Batteriesystems in Watt wählen, z. B. sensor.speicher_garage_ac_power. Keinen Energiezähler (kWh), Hausverbrauch, Netzanschluss- oder Sollwert wählen. Werte in kW müssen zuvor in W umgerechnet werden.",
-          "command_entity": "Die number- oder input_number-Entity wählen, über die eine Leistungsvorgabe in Watt an dieses Batteriesystem übergeben werden kann, z. B. number.speicher_garage_power_setpoint. Ein reiner Messsensor, Ein/Aus-Schalter, SOC-Ziel oder Stromlimit in A passt nicht. Ein input_number ist nur geeignet, wenn eine separate Anbindung seinen Wert an den Speicher weitergibt. Gespeichert wird number.set_value bzw. input_number.set_value; Vorzeichen und Betriebsmodus des Geräts müssen zur späteren Steuerung passen.",
-          "min_soc": "Unterhalb dieses Ladezustands soll der Planer keine weitere Entladung vorsehen, z. B. 20 % als Reserve. Wert zwischen 0 und 100; muss kleiner als die obere Ladegrenze sein. Ändert keine Geräteeinstellung.",
-          "max_soc": "Ab diesem Ladezustand soll der Planer keine weitere Ladung vorsehen, z. B. 90 %. Wert zwischen 0 und 100; muss größer als die untere Entladegrenze sein. Ändert keine Geräteeinstellung.",
-          "max_charge_w": "Die für dieses Batteriesystem zulässige AC-Ladeleistung als positiven Watt-Wert eingeben, z. B. 800. Herstellergrenze und vorhandene Gerätekonfiguration berücksichtigen. Keine Kapazität in kWh und keine Gesamtleistung des Pools eingeben. Der vorhandene Planer benötigt Werte größer als 0.",
-          "max_discharge_w": "Die für dieses Batteriesystem zulässige AC-Entladeleistung als positiven Watt-Wert eingeben, z. B. 800. Herstellergrenze und vorhandene Gerätekonfiguration berücksichtigen. Keine negativen Vorzeichen verwenden. Der vorhandene Planer benötigt Werte größer als 0."
+          "command_entity": "Beschreibbare number- oder input_number-Entity für vorzeichenbehaftete Leistung in W. Der Wertebereich muss 0 sowie die konfigurierte Lade- und Entladeleistung abdecken. Ein positiver reiner Leistungsbegrenzer, SOC-Ziel, A-Stromlimit oder Messsensor reicht nicht aus. input_number steuert ein Gerät nur über eine separate Weiterleitung. Aufgerufen wird der passende set_value-Dienst.",
+          "min_soc": "Unterhalb dieses Ladezustands wird der Planer keine weitere Entladung vorsehen, z. B. 20 % als Reserve. Wert zwischen 0 und 100; muss kleiner als die obere Ladegrenze sein. Ändert keine Geräteeinstellung.",
+          "max_soc": "Ab diesem Ladezustand wird der Planer keine weitere Ladung vorsehen, z. B. 90 %. Wert zwischen 0 und 100; muss größer als die untere Entladegrenze sein. Ändert keine Geräteeinstellung.",
+          "max_charge_w": "Positive Obergrenze pro Speicher in W; Standard 300 W. Größer als 0 und höchstens so hoch wie vom Hersteller, BMS und der Gerätekonfiguration erlaubt. Keine Kapazität in kWh oder Gesamtleistung des Pools. Dies ist eine Softwaregrenze, kein Ersatz für den Geräteschutz.",
+          "max_discharge_w": "Positive Obergrenze pro Speicher in W; Standard 300 W. Größer als 0 und höchstens so hoch wie vom Hersteller, BMS und der Gerätekonfiguration erlaubt. Kein negatives Vorzeichen verwenden. Dies ist eine Softwaregrenze, kein Ersatz für den Geräteschutz.",
+          "positive_discharge": "Gilt für Leistungsvorgabe UND gemessene AC-Leistung: eingeschaltet = positiv entladen, negativ laden; ausgeschaltet = positiv laden, negativ entladen. Falls die Entities unterschiedliche Vorzeichen verwenden, zuvor einen passenden Adapter erstellen.",
+          "adapter_confirmed": "Nur bestätigen, wenn die Entity beide Leistungsrichtungen als vorzeichenbehaftete Watt-Werte unterstützt, 0 W sicher stoppt, der richtige Fernsteuerungsmodus am Gerät aktiv ist und ein geräteseitiger Timeout bei ausbleibenden Befehlen sicher auf 0 zurückfällt. Ein input_number benötigt eine separate Weiterleitung einschließlich Watchdog. Ohne diese Bestätigung bleibt die Live-Ausgabe gesperrt."
         }
       },
       "edit_battery": {
@@ -100,6 +109,24 @@
           "battery": "Eines der bereits in diesem Pool gespeicherten Batteriesysteme anhand seines Namens auswählen."
         },
         "description": "Entfernt nur die gespeicherte Zuordnung aus diesem Pool. Das Gerät und seine Home-Assistant-Entities bleiben erhalten. Im nächsten Schritt bestätigst du das Entfernen."
+      },
+      "control_settings": {
+        "title": "Betriebsart",
+        "description": "Zuerst in Simulation prüfen. Beim Ausschalten, bei ungültigen Messwerten und beim Entladen der Integration wird für alle freigegebenen Adapter 0 W angefordert. Bei Netzwerk- oder Geräteausfall kann nur ein geräteseitiger Watchdog den Stopp gewährleisten.",
+        "data": {
+          "control_mode": "Betriebsart",
+          "live_control": "Live-Ausgabe an Geräte freigeben",
+          "grid_power_entity": "Sensor für die gesamte Netzanschlussleistung (W)",
+          "grid_confirmed": "Netzmessung: positiver Bezug und negativer Export geprüft",
+          "grid_target_w": "Gewünschter Rest-Netzbezug (W)"
+        },
+        "data_description": {
+          "control_mode": "Externer Sollwert: die Pool-Leistung über die neue number-Entity vorgeben, positiv entladen / negativ laden. Mindestens alle 60 Sekunden erneut setzen, sonst Stopp. Eigenverbrauch: anhand des Netzsensors Bezug/Export ausgleichen. In beiden Fällen muss der Pool-Schalter eingeschaltet sein.",
+          "live_control": "Standard aus: nur Simulation, keinerlei Leistungsbefehle an Geräte. Erst nach Prüfung aller Adapter einschalten. Danach startet der Pool weiterhin ausgeschaltet und muss über seinen Schalter aktiviert werden. Nach Neustart oder Konfigurationsänderung ist der Pool wieder aus.",
+          "grid_power_entity": "Nur für Eigenverbrauch: Sensor am gemeinsamen Netzanschlusspunkt, der den gesamten Haushalt samt Batteriesystemen misst. Einheit W, positive Werte = Netzbezug, negative Werte = Einspeisung. Nicht PV-Erzeugung, Hausverbrauch ohne Speicher oder einen einzelnen Batteriesensor auswählen.",
+          "grid_confirmed": "Nur für Eigenverbrauch bestätigen: am Netzanschluss erzeugt Bezug positive und Einspeisung negative Werte in W. Eine falsche Richtung kann die Regelung verstärken statt ausgleichen. Die Batteriesensoren müssen dieselbe AC-Seite dieses Netzanschlusses messen.",
+          "grid_target_w": "Standard 20 W verbleibender Netzbezug statt exakter Nulleinspeisung. Ein kleiner positiver Puffer reduziert Pendeln um 0. Wird nur im Eigenverbrauchsmodus verwendet."
+        }
       }
     },
     "error": {
@@ -107,7 +134,57 @@
       "duplicate_name": "Ein Batteriesystem mit diesem Namen existiert bereits.",
       "invalid_soc_range": "Der minimale Ladezustand muss kleiner als der maximale sein.",
       "distinct_sensors": "Separate Sensoren für Ladezustand und Leistung auswählen.",
-      "entity_missing": "Diese Entity existiert nicht mehr."
+      "entity_missing": "Diese Entity existiert nicht mehr.",
+      "duplicate_command": "Diese Leistungsvorgabe wird bereits von einem Batteriesystem verwendet.",
+      "grid_required": "Für Eigenverbrauch einen vorhandenen Netzleistungssensor in W auswählen.",
+      "grid_confirmation_required": "Die Vorzeichen der Netzmessung müssen geprüft und bestätigt sein.",
+      "adapters_required": "Zuerst mindestens ein Batteriesystem anlegen und bei allen die geprüfte Geräteanbindung bestätigen."
+    }
+  },
+  "selector": {
+    "control_mode": {
+      "options": {
+        "external": "Externer Leistungs-Sollwert",
+        "autonomous": "Eigenverbrauch am Netzanschluss"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "soc": {
+        "name": "Pool-Ladezustand"
+      },
+      "measured": {
+        "name": "Gemessene AC-Leistung"
+      },
+      "planned": {
+        "name": "Geplante AC-Leistung"
+      },
+      "status": {
+        "name": "Regelstatus",
+        "state": {
+          "disabled": "Ausgeschaltet",
+          "dispatch": "Leistung wird verteilt",
+          "inside_deadband": "Innerhalb der Toleranz",
+          "soc_limit": "Ladezustandsgrenze erreicht",
+          "direction_reversal_guard": "Wartezeit vor Richtungswechsel",
+          "stale_or_invalid_data": "Veraltete oder ungültige Daten",
+          "no_batteries": "Keine Batteriesysteme eingerichtet",
+          "fault": "Fehler — Attribute prüfen",
+          "invalid_readings": "Ungültige Messwerte",
+          "target_expired": "Warte auf frischen Sollwert"
+        }
+      }
+    },
+    "number": {
+      "target": {
+        "name": "Leistungsvorgabe (+ Entladen / − Laden)"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Pool-Steuerung"
+      }
     }
   }
 }

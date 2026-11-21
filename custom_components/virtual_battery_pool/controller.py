@@ -1,8 +1,8 @@
-from __future__ import annotations
-
+"""Pure planner: positive pool requests discharge; negative requests charge."""
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import StrEnum
+import math
 
 from .const import BatteryConfig, ControllerConfig
 
@@ -35,120 +35,76 @@ class Plan:
 
 
 class PoolController:
-    """Distribute an external signed pool power request across batteries."""
-
     def __init__(self, config: ControllerConfig) -> None:
         if not config.batteries:
             raise ValueError("At least one battery is required")
         self.config = config
         self._last_direction = Direction.IDLE
-        self._direction_since: datetime | None = None
-        self._last_commands: dict[str, float] = {}
-        self._last_command_at: datetime | None = None
+        self._zero_since: datetime | None = None
+        self._last_total = 0.0
+        self._last_at: datetime | None = None
 
-    def plan(
-        self,
-        readings: dict[str, BatteryReading],
-        requested_power_w: float,
-        now: datetime,
-    ) -> Plan:
-        """Positive requests discharge; negative requests charge."""
-        pool_soc = self._pool_soc(readings)
-        if not self._configuration_safe() or not self._readings_safe(readings, now):
-            return self._zero("stale_or_invalid_data", pool_soc)
-
-        direction = (
-            Direction.CHARGE if requested_power_w < 0 else Direction.DISCHARGE
-        ) if abs(requested_power_w) >= self.config.deadband_w else Direction.IDLE
-        if direction is Direction.IDLE:
-            return self._zero("inside_deadband", pool_soc)
-
+    def plan(self, readings: dict[str, BatteryReading], requested_power_w: float, now: datetime) -> Plan:
+        valid = self._readings_safe(readings, now)
+        soc = self._pool_soc(readings) if valid else None
+        if not self._configuration_safe() or not valid or not math.isfinite(requested_power_w):
+            return self._zero("stale_or_invalid_data", soc, now)
+        direction = Direction.IDLE if abs(requested_power_w) < self.config.deadband_w else (
+            Direction.CHARGE if requested_power_w < 0 else Direction.DISCHARGE)
+        if direction == Direction.IDLE:
+            return self._zero("inside_deadband", soc, now)
         if self._last_direction not in (Direction.IDLE, direction):
-            self._direction_since = now
-            self._last_direction = direction
-            return self._zero("direction_reversal_guard", pool_soc)
-        if self._last_direction is Direction.IDLE:
-            self._last_direction = direction
-            self._direction_since = now
-        if self._direction_since and now - self._direction_since < timedelta(
-            seconds=self.config.reversal_guard_seconds
-        ):
-            return self._zero("direction_reversal_guard", pool_soc)
-
-        remaining = min(
-            abs(requested_power_w),
-            self.config.ramp_w_per_minute * self.config.command_interval_seconds / 60,
-        )
-        allocations = {battery.name: 0.0 for battery in self.config.batteries}
-        candidates = self._eligible(direction, readings)
-        candidates.sort(key=lambda battery: self._priority(battery, direction, readings))
+            if self._zero_since is None or (now - self._zero_since).total_seconds() < self.config.reversal_guard_seconds:
+                return self._zero("direction_reversal_guard", soc, now)
+        elapsed = self.config.command_interval_seconds if self._last_at is None else max(0, min(
+            (now - self._last_at).total_seconds(), self.config.command_interval_seconds))
+        remaining = min(abs(requested_power_w), self._last_total + self.config.ramp_w_per_minute * elapsed / 60)
+        allocations = {b.name: 0.0 for b in self.config.batteries}
+        candidates = [b for b in self.config.batteries if (
+            readings[b.name].soc < b.max_soc if direction == Direction.CHARGE else readings[b.name].soc > b.min_soc)]
+        candidates.sort(key=lambda b: readings[b.name].soc if direction == Direction.CHARGE else -readings[b.name].soc)
         for battery in candidates:
-            if remaining <= 0:
-                break
-            power_limit = battery.max_charge_w if direction is Direction.CHARGE else battery.max_discharge_w
-            amount = min(remaining, power_limit)
-            allocations[battery.name] = self._hysteresis(battery.name, amount, now)
+            limit = battery.max_charge_w if direction == Direction.CHARGE else battery.max_discharge_w
+            allocations[battery.name] = min(remaining, limit)
             remaining -= allocations[battery.name]
+        total = sum(allocations.values())
+        if total == 0:
+            return self._zero("soc_limit", soc, now)
+        self._last_direction = direction
+        self._zero_since = None
+        self._last_at = now
+        self._last_total = total
+        return Plan(tuple(BatteryCommand(b.name, allocations[b.name], direction if allocations[b.name] else Direction.IDLE)
+                          for b in self.config.batteries), "dispatch", soc)
 
-        commands = tuple(
-            BatteryCommand(
-                battery.name,
-                round(allocations[battery.name], 1),
-                direction if allocations[battery.name] > 0 else Direction.IDLE,
-            )
-            for battery in self.config.batteries
-        )
-        if not any(command.power_w for command in commands):
-            return self._zero("soc_limit", pool_soc)
-        self._last_command_at = now
-        self._last_commands = {command.battery: command.power_w for command in commands}
-        return Plan(commands, "dispatch", pool_soc)
+    def _configuration_safe(self):
+        c = self.config
+        return (math.isfinite(c.ramp_w_per_minute) and c.ramp_w_per_minute > 0
+                and c.command_interval_seconds > 0 and c.stale_after_seconds > 0
+                and math.isfinite(c.deadband_w) and c.deadband_w >= 0 and c.reversal_guard_seconds >= 0
+                and len({b.name for b in c.batteries}) == len(c.batteries)
+                and all(all(math.isfinite(v) for v in (b.capacity_kwh, b.min_soc, b.max_soc, b.max_charge_w, b.max_discharge_w))
+                        and b.capacity_kwh > 0 and 0 <= b.min_soc < b.max_soc <= 100
+                        and b.max_charge_w > 0 and b.max_discharge_w > 0 for b in c.batteries))
 
-    def _configuration_safe(self) -> bool:
-        return all(
-            battery.capacity_kwh > 0
-            and 0 <= battery.min_soc < battery.max_soc <= 100
-            and battery.max_charge_w > 0
-            and battery.max_discharge_w > 0
-            for battery in self.config.batteries
-        )
-
-    def _readings_safe(self, readings: dict[str, BatteryReading], now: datetime) -> bool:
+    def _readings_safe(self, readings, now):
         for battery in self.config.batteries:
-            reading = readings.get(battery.name)
-            if reading is None or not 0 <= reading.soc <= 100:
+            r = readings.get(battery.name)
+            if r is None or not math.isfinite(r.soc) or not math.isfinite(r.power_w) or not 0 <= r.soc <= 100:
                 return False
-            age = now - reading.updated_at
-            if age < timedelta(0) or age > timedelta(seconds=self.config.stale_after_seconds):
+            if not 0 <= (now - r.updated_at).total_seconds() <= self.config.stale_after_seconds:
                 return False
         return True
 
-    def _eligible(self, direction: Direction, readings: dict[str, BatteryReading]) -> list[BatteryConfig]:
-        return [
-            battery
-            for battery in self.config.batteries
-            if (
-                readings[battery.name].soc < battery.max_soc
-                if direction is Direction.CHARGE
-                else readings[battery.name].soc > battery.min_soc
-            )
-        ]
+    def _pool_soc(self, readings):
+        if not self._configuration_safe():
+            return None
+        return round(sum(b.capacity_kwh * readings[b.name].soc for b in self.config.batteries)
+                     / sum(b.capacity_kwh for b in self.config.batteries), 1)
 
-    def _priority(self, battery: BatteryConfig, direction: Direction, readings: dict[str, BatteryReading]) -> float:
-        soc = readings[battery.name].soc
-        return soc if direction is Direction.CHARGE else -soc
-
-    def _pool_soc(self, readings: dict[str, BatteryReading]) -> float | None:
-        values = [(battery.capacity_kwh, readings[battery.name].soc) for battery in self.config.batteries if battery.name in readings]
-        total_capacity = sum(capacity for capacity, _ in values)
-        return round(sum(capacity * soc for capacity, soc in values) / total_capacity, 1) if total_capacity else None
-
-    def _hysteresis(self, battery: str, amount: float, now: datetime) -> float:
-        previous = self._last_commands.get(battery, 0)
-        if self._last_command_at and now - self._last_command_at < timedelta(seconds=self.config.command_interval_seconds):
-            if abs(amount - previous) < self.config.hysteresis_w:
-                return previous
-        return amount
-
-    def _zero(self, reason: str, pool_soc: float | None) -> Plan:
-        return Plan(tuple(BatteryCommand(battery.name, 0, Direction.IDLE) for battery in self.config.batteries), reason, pool_soc)
+    def _zero(self, reason, soc, now):
+        if self._zero_since is None:
+            self._zero_since = now
+        self._last_total = 0.0
+        self._last_at = now
+        return Plan(tuple(BatteryCommand(b.name, 0, Direction.IDLE) for b in self.config.batteries), reason, soc)

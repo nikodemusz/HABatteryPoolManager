@@ -23,7 +23,7 @@ def readings(c_soc=60, e_soc=50, at=NOW):
 
 
 def test_stale_sensor_forces_zero_commands():
-    plan = setup_controller().plan(readings(at=NOW - timedelta(seconds=60)), 500, NOW)
+    plan = setup_controller().plan(readings(at=NOW - timedelta(seconds=61)), 500, NOW)
     assert plan.reason == "stale_or_invalid_data"
     assert all(command.power_w == 0 for command in plan.commands)
 
@@ -65,3 +65,30 @@ def test_discharge_respects_per_battery_soc_floor():
 def test_pool_soc_is_capacity_weighted():
     plan = setup_controller().plan(readings(c_soc=100, e_soc=0), 0, NOW)
     assert plan.pool_soc == 33.3
+
+
+def test_ramp_accumulates_and_safety_stop_is_immediate():
+    controller = PoolController(ControllerConfig(setup_controller().config.batteries))
+    a = controller.plan(readings(), 1000, NOW)
+    b = controller.plan(readings(), 1000, NOW + timedelta(seconds=5))
+    assert sum(c.power_w for c in a.commands) == 25
+    assert sum(c.power_w for c in b.commands) == 50
+    stop = controller.plan(readings(c_soc=20, e_soc=20), 1000, NOW + timedelta(seconds=6))
+    assert all(c.power_w == 0 for c in stop.commands)
+
+
+def test_reversal_waits_full_zero_interval():
+    controller = PoolController(ControllerConfig(setup_controller().config.batteries))
+    controller.plan(readings(), -1000, NOW)
+    assert controller.plan(readings(), 1000, NOW + timedelta(seconds=5)).reason == 'direction_reversal_guard'
+    assert controller.plan(readings(), 1000, NOW + timedelta(seconds=34)).reason == 'direction_reversal_guard'
+    assert controller.plan(readings(), 1000, NOW + timedelta(seconds=35)).reason == 'dispatch'
+
+
+def test_nonfinite_readings_and_requests_stop():
+    for value in [float('nan'), float('inf'), -float('inf')]:
+        controller = setup_controller()
+        assert controller.plan(readings(), value, NOW).reason == 'stale_or_invalid_data'
+        rs = readings()
+        rs['venus_c'] = BatteryReading(50, value, NOW)
+        assert controller.plan(rs, 500, NOW).pool_soc is None

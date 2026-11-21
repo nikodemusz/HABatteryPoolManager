@@ -23,8 +23,9 @@ async def context(tmp_path):
     hass = HomeAssistant(str(tmp_path))
     for entity in ['sensor.soc', 'sensor.power', 'number.command', 'input_number.command']:
         hass.states.async_set(entity, '50')
-    entry = SimpleNamespace(options={})
+    entry = SimpleNamespace(options={}, entry_id='pool')
     hass.config_entries = Mock()
+    hass.config_entries.async_entries.return_value = []
     hass.config_entries.async_get_known_entry.return_value = entry
     def flow():
         result = BatteryPoolOptionsFlow()
@@ -40,7 +41,7 @@ async def test_add_edit_remove_and_preserve_other_options(context):
     entry, new_flow = context
     entry.options = {'other': True}
     flow = new_flow()
-    assert (await flow.async_step_init())['menu_options'] == ['add_battery']
+    assert (await flow.async_step_init())['menu_options'] == ['add_battery', 'control_settings']
     result = await flow.async_step_add_battery(values())
     entry.options = result['data']
     battery = entry.options['batteries'][0]
@@ -76,7 +77,7 @@ async def test_validation_and_multiple_batteries(context):
     assert (await flow.async_step_add_battery(values(name=' garage ')))['errors']['name'] == 'duplicate_name'
     assert (await flow.async_step_add_battery(values(name='Other', min_soc=90, max_soc=10)))['errors']['min_soc'] == 'invalid_soc_range'
     assert (await flow.async_step_add_battery(values(name='Other', soc_entity='sensor.missing')))['errors']['soc_entity'] == 'entity_missing'
-    result = await flow.async_step_add_battery(values(name='Other'))
+    result = await flow.async_step_add_battery(values(name='Other', command_entity='input_number.command'))
     assert len(result['data']['batteries']) == 2
     assert len(entry.options['batteries']) == 1
 
@@ -85,3 +86,32 @@ async def test_validation_and_multiple_batteries(context):
 def test_invalid_schema_values(changes):
     with pytest.raises(vol.Invalid):
         values(**changes)
+
+
+@pytest.mark.asyncio
+async def test_live_requires_confirmed_adapters_and_grid_requires_confirmation(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    args = {'control_mode': 'external', 'live_control': True, 'grid_confirmed': False, 'grid_target_w': 20}
+    result = await flow.async_step_control_settings(args)
+    assert result['errors']['live_control'] == 'adapters_required'
+    args.update(control_mode='autonomous', live_control=False)
+    result = await flow.async_step_control_settings(args)
+    assert result['errors']['grid_power_entity'] == 'grid_required'
+    assert result['errors']['grid_confirmed'] == 'grid_confirmation_required'
+    args.update(control_mode='external')
+    result = await flow.async_step_control_settings(args)
+    assert result['data']['live_control'] is False
+
+
+@pytest.mark.asyncio
+async def test_duplicate_command_entity_is_rejected(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    entry.options = (await flow.async_step_add_battery(values()))['data']
+    flow = new_flow()
+    await flow.async_step_init()
+    result = await flow.async_step_add_battery(values(name='Second'))
+    assert result['errors']['command_entity'] == 'duplicate_command'

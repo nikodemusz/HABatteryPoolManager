@@ -1,10 +1,14 @@
 {
   "domain": "virtual_battery_pool",
   "name": "Virtual Battery Pool",
-  "version": "0.1.0",
-  "documentation": "https://github.com/",
-  "codeowners": [],
+  "version": "0.2.0",
+  "documentation": "https://github.com/nikodemusz/HABatteryPoolManager",
+  "codeowners": [
+    "@nikodemusz"
+  ],
   "config_flow": true,
   "iot_class": "local_push",
-  "requirements": []
+  "requirements": [],
+  "issue_tracker": "https://github.com/nikodemusz/HABatteryPoolManager/issues",
+  "integration_type": "service"
 }

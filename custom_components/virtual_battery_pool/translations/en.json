@@ -22,7 +22,8 @@
         "menu_options": {
           "add_battery": "Add battery",
           "edit_battery": "Edit battery",
-          "remove_battery": "Remove battery"
+          "remove_battery": "Remove battery",
+          "control_settings": "Control mode and live output"
         }
       },
       "confirm_remove": {
@@ -31,7 +32,7 @@
       },
       "add_battery": {
         "title": "Add battery system",
-        "description": "Assign entities belonging to the same battery system only. If unsure, compare their units and values in Developer tools → States. This editor currently only saves mappings and limits; it does not send control commands yet.",
+        "description": "Assign entities of the same battery system. Start in simulation and inspect the plan in the status entities. Enable live output separately under “Control mode and live output”. Device protection and the battery BMS remain required.",
         "data": {
           "name": "Name of this battery system",
           "capacity_kwh": "Usable capacity of this battery system (kWh)",
@@ -41,23 +42,27 @@
           "min_soc": "Lower discharge limit (%)",
           "max_soc": "Upper charge limit (%)",
           "max_charge_w": "Maximum AC charging power for this battery system (W)",
-          "max_discharge_w": "Maximum AC discharging power for this battery system (W)"
+          "max_discharge_w": "Maximum AC discharging power for this battery system (W)",
+          "positive_discharge": "Positive values mean discharging",
+          "adapter_confirmed": "Device adapter and failure protection verified"
         },
         "data_description": {
           "name": "A name of your choice, unique within this pool, e.g. “Garage battery”. This identifies one battery system, rather than the whole pool.",
           "capacity_kwh": "Usable energy capacity of this battery system according to its manufacturer or configuration, e.g. 5.12 kWh. Used to weight the pool state of charge. Enter a number greater than 0, rather than power in W or a sensor.",
           "soc_entity": "Select the sensor reporting this battery system’s current state of charge (SOC) as a number from 0 to 100 in %, e.g. sensor.garage_battery_soc. Do not select a voltage, energy, or pool sensor.",
           "power_entity": "Select the sensor measuring this battery system’s current AC charging/discharging power in watts, e.g. sensor.garage_battery_ac_power. Do not select an energy meter (kWh), household consumption, grid connection, or setpoint. Values in kW must first be converted to W.",
-          "command_entity": "Select the number or input_number entity that can pass a power setpoint in watts to this battery system, e.g. number.garage_battery_power_setpoint. A measurement sensor, on/off switch, target SOC, or current limit in A is unsuitable. An input_number is only suitable if a separate connection forwards its value to the battery. The editor stores number.set_value or input_number.set_value; device sign conventions and operating mode must match the eventual control implementation.",
-          "min_soc": "The planner should not request further discharge below this state of charge, e.g. 20 % as a reserve. Enter 0–100, less than the upper charge limit. This does not change a device setting.",
-          "max_soc": "The planner should not request further charging at or above this state of charge, e.g. 90 %. Enter 0–100, greater than the lower discharge limit. This does not change a device setting.",
-          "max_charge_w": "Enter this battery system’s permitted AC charging power as a positive value in watts, e.g. 800. Respect manufacturer limits and existing device configuration. Do not enter capacity in kWh or total pool power. The existing planner requires values greater than 0.",
-          "max_discharge_w": "Enter this battery system’s permitted AC discharging power as a positive value in watts, e.g. 800. Respect manufacturer limits and existing device configuration. Do not use a negative sign. The existing planner requires values greater than 0."
+          "command_entity": "Writable number or input_number entity for signed power in W. Its range must cover zero and the configured charge/discharge limits. An unsigned power limiter, target SOC, current limit in A, or measurement sensor is insufficient. An input_number controls a device only through separate forwarding. The matching set_value service is called.",
+          "min_soc": "The planner does not request further discharge below this state of charge, e.g. 20 % as a reserve. Enter 0–100, less than the upper charge limit. This does not change a device setting.",
+          "max_soc": "The planner does not request further charging at or above this state of charge, e.g. 90 %. Enter 0–100, greater than the lower discharge limit. This does not change a device setting.",
+          "max_charge_w": "Positive per-battery limit in W; default 300 W. Must be greater than 0 and respect manufacturer, BMS, and device limits. Do not enter capacity in kWh or total pool power. This software limit does not replace device protection.",
+          "max_discharge_w": "Positive per-battery limit in W; default 300 W. Must be greater than 0 and respect manufacturer, BMS, and device limits. Do not use a negative sign. This software limit does not replace device protection.",
+          "positive_discharge": "Applies to BOTH command and measured AC power: on = positive discharge, negative charge; off = positive charge, negative discharge. If the two entities use different conventions, first create a matching adapter.",
+          "adapter_confirmed": "Confirm only after checking that the entity supports both directions as signed watts, 0 W safely stops, the device is in the correct remote-control mode, and a device-side command timeout safely returns to zero if commands stop. An input_number requires separate forwarding including a watchdog. Live output is blocked without confirmation."
         }
       },
       "battery": {
         "title": "Edit battery system",
-        "description": "Assign entities belonging to the same battery system only. If unsure, compare their units and values in Developer tools → States. This editor currently only saves mappings and limits; it does not send control commands yet.",
+        "description": "Assign entities of the same battery system. Start in simulation and inspect the plan in the status entities. Enable live output separately under “Control mode and live output”. Device protection and the battery BMS remain required.",
         "data": {
           "name": "Name of this battery system",
           "capacity_kwh": "Usable capacity of this battery system (kWh)",
@@ -67,18 +72,22 @@
           "min_soc": "Lower discharge limit (%)",
           "max_soc": "Upper charge limit (%)",
           "max_charge_w": "Maximum AC charging power for this battery system (W)",
-          "max_discharge_w": "Maximum AC discharging power for this battery system (W)"
+          "max_discharge_w": "Maximum AC discharging power for this battery system (W)",
+          "positive_discharge": "Positive values mean discharging",
+          "adapter_confirmed": "Device adapter and failure protection verified"
         },
         "data_description": {
           "name": "A name of your choice, unique within this pool, e.g. “Garage battery”. This identifies one battery system, rather than the whole pool.",
           "capacity_kwh": "Usable energy capacity of this battery system according to its manufacturer or configuration, e.g. 5.12 kWh. Used to weight the pool state of charge. Enter a number greater than 0, rather than power in W or a sensor.",
           "soc_entity": "Select the sensor reporting this battery system’s current state of charge (SOC) as a number from 0 to 100 in %, e.g. sensor.garage_battery_soc. Do not select a voltage, energy, or pool sensor.",
           "power_entity": "Select the sensor measuring this battery system’s current AC charging/discharging power in watts, e.g. sensor.garage_battery_ac_power. Do not select an energy meter (kWh), household consumption, grid connection, or setpoint. Values in kW must first be converted to W.",
-          "command_entity": "Select the number or input_number entity that can pass a power setpoint in watts to this battery system, e.g. number.garage_battery_power_setpoint. A measurement sensor, on/off switch, target SOC, or current limit in A is unsuitable. An input_number is only suitable if a separate connection forwards its value to the battery. The editor stores number.set_value or input_number.set_value; device sign conventions and operating mode must match the eventual control implementation.",
-          "min_soc": "The planner should not request further discharge below this state of charge, e.g. 20 % as a reserve. Enter 0–100, less than the upper charge limit. This does not change a device setting.",
-          "max_soc": "The planner should not request further charging at or above this state of charge, e.g. 90 %. Enter 0–100, greater than the lower discharge limit. This does not change a device setting.",
-          "max_charge_w": "Enter this battery system’s permitted AC charging power as a positive value in watts, e.g. 800. Respect manufacturer limits and existing device configuration. Do not enter capacity in kWh or total pool power. The existing planner requires values greater than 0.",
-          "max_discharge_w": "Enter this battery system’s permitted AC discharging power as a positive value in watts, e.g. 800. Respect manufacturer limits and existing device configuration. Do not use a negative sign. The existing planner requires values greater than 0."
+          "command_entity": "Writable number or input_number entity for signed power in W. Its range must cover zero and the configured charge/discharge limits. An unsigned power limiter, target SOC, current limit in A, or measurement sensor is insufficient. An input_number controls a device only through separate forwarding. The matching set_value service is called.",
+          "min_soc": "The planner does not request further discharge below this state of charge, e.g. 20 % as a reserve. Enter 0–100, less than the upper charge limit. This does not change a device setting.",
+          "max_soc": "The planner does not request further charging at or above this state of charge, e.g. 90 %. Enter 0–100, greater than the lower discharge limit. This does not change a device setting.",
+          "max_charge_w": "Positive per-battery limit in W; default 300 W. Must be greater than 0 and respect manufacturer, BMS, and device limits. Do not enter capacity in kWh or total pool power. This software limit does not replace device protection.",
+          "max_discharge_w": "Positive per-battery limit in W; default 300 W. Must be greater than 0 and respect manufacturer, BMS, and device limits. Do not use a negative sign. This software limit does not replace device protection.",
+          "positive_discharge": "Applies to BOTH command and measured AC power: on = positive discharge, negative charge; off = positive charge, negative discharge. If the two entities use different conventions, first create a matching adapter.",
+          "adapter_confirmed": "Confirm only after checking that the entity supports both directions as signed watts, 0 W safely stops, the device is in the correct remote-control mode, and a device-side command timeout safely returns to zero if commands stop. An input_number requires separate forwarding including a watchdog. Live output is blocked without confirmation."
         }
       },
       "edit_battery": {
@@ -100,6 +109,24 @@
           "battery": "Select one of the battery systems already saved in this pool by its name."
         },
         "description": "Only removes the saved mapping from this pool. The device and its Home Assistant entities are retained. Confirm removal in the next step."
+      },
+      "control_settings": {
+        "title": "Control mode",
+        "description": "Verify in simulation first. Switching off, invalid readings, and unloading the integration request 0 W for every confirmed adapter. During network or device failure only a device-side watchdog can guarantee stopping.",
+        "data": {
+          "control_mode": "Control mode",
+          "live_control": "Allow live output to devices",
+          "grid_power_entity": "Whole-home grid connection power sensor (W)",
+          "grid_confirmed": "Verified: positive grid import and negative export",
+          "grid_target_w": "Desired residual grid import (W)"
+        },
+        "data_description": {
+          "control_mode": "External request: set the pool number entity, positive to discharge and negative to charge. Refresh at least every 60 seconds or the pool stops. Self-consumption: balance import/export using the grid sensor. Both modes require the pool switch to be on.",
+          "live_control": "Off by default: simulation only, no device power commands. Enable only after verifying every adapter. The pool still starts switched off and requires its switch to be activated. Restarting or changing options switches the pool off again.",
+          "grid_power_entity": "Self-consumption only: sensor at the shared grid connection measuring the whole home including all pool batteries. Unit W, positive = import, negative = export. Do not select PV generation, household consumption excluding batteries, or an individual battery sensor.",
+          "grid_confirmed": "For self-consumption, verify that grid import is positive and export is negative in W. An incorrect convention can amplify the imbalance. All battery sensors must measure the same AC side of this grid connection.",
+          "grid_target_w": "Default 20 W residual grid import rather than exact zero export. A small positive margin reduces oscillation near zero. Only used in self-consumption mode."
+        }
       }
     },
     "error": {
@@ -107,7 +134,57 @@
       "duplicate_name": "A battery with this name already exists.",
       "invalid_soc_range": "Minimum SOC must be lower than maximum SOC.",
       "distinct_sensors": "Choose separate SOC and power sensors.",
-      "entity_missing": "This entity no longer exists."
+      "entity_missing": "This entity no longer exists.",
+      "duplicate_command": "This command entity is already assigned to a battery.",
+      "grid_required": "Select an existing grid power sensor in W for self-consumption.",
+      "grid_confirmation_required": "Verify and confirm the grid measurement sign convention.",
+      "adapters_required": "Add at least one battery and confirm the verified adapter contract for every battery first."
+    }
+  },
+  "selector": {
+    "control_mode": {
+      "options": {
+        "external": "External power request",
+        "autonomous": "Grid self-consumption"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "soc": {
+        "name": "Pool state of charge"
+      },
+      "measured": {
+        "name": "Measured AC power"
+      },
+      "planned": {
+        "name": "Planned AC power"
+      },
+      "status": {
+        "name": "Control status",
+        "state": {
+          "disabled": "Disabled",
+          "dispatch": "Dispatching",
+          "inside_deadband": "Within deadband",
+          "soc_limit": "SOC limit reached",
+          "direction_reversal_guard": "Waiting before reversal",
+          "stale_or_invalid_data": "Stale or invalid data",
+          "no_batteries": "No batteries configured",
+          "fault": "Fault — check attributes",
+          "invalid_readings": "Invalid measurements",
+          "target_expired": "Waiting for a fresh request"
+        }
+      }
+    },
+    "number": {
+      "target": {
+        "name": "Power request (+ discharge / − charge)"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Pool control"
+      }
     }
   }
 }
