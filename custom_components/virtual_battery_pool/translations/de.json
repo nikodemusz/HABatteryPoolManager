@@ -5,7 +5,10 @@
         "title": "Battery Pool",
         "description": "Pool anlegen. Batteriesysteme danach über Konfigurieren hinzufügen.",
         "data": {
-          "name": "Name"
+          "name": "Name des virtuellen Batterie-Pools"
+        },
+        "data_description": {
+          "name": "Frei wählbarer Name für die Gruppe mehrerer Batteriesysteme, z. B. „Hausspeicher“. Die einzelnen Batteriesysteme fügst du anschließend über Konfigurieren hinzu."
         }
       }
     },
@@ -27,46 +30,76 @@
         "description": "{name} aus diesem Pool entfernen?"
       },
       "add_battery": {
-        "title": "Batteriesystem",
-        "description": "Entities und Grenzen zuordnen. Die Leistungsvorgabe muss ein number oder input_number in Watt sein. Diese Einrichtung steuert noch keine Geräte.",
+        "title": "Batteriesystem hinzufügen",
+        "description": "Ordne ausschließlich Entities desselben Batteriesystems zu. Vergleiche im Zweifel die Einheiten und Werte unter Entwicklerwerkzeuge → Zustände. Der Editor speichert bisher nur die Zuordnung und Grenzen; er sendet noch keine Steuerbefehle.",
         "data": {
-          "name": "Name",
-          "capacity_kwh": "Kapazität (kWh)",
-          "soc_entity": "Ladezustand (%)",
-          "power_entity": "Gemessene AC-Leistung (W)",
-          "command_entity": "Entity für Leistungsvorgabe",
-          "min_soc": "Minimaler Ladezustand (%)",
-          "max_soc": "Maximaler Ladezustand (%)",
-          "max_charge_w": "Maximale Ladeleistung (W)",
-          "max_discharge_w": "Maximale Entladeleistung (W)"
+          "name": "Name dieses Batteriesystems",
+          "capacity_kwh": "Nutzbare Kapazität dieses Batteriesystems (kWh)",
+          "soc_entity": "Sensor für den Ladezustand dieses Batteriesystems (%)",
+          "power_entity": "Sensor für die aktuelle AC-Leistung dieses Batteriesystems (W)",
+          "command_entity": "Beschreibbare Entity für die Leistungsvorgabe (W)",
+          "min_soc": "Untere Entladegrenze (%)",
+          "max_soc": "Obere Ladegrenze (%)",
+          "max_charge_w": "Maximale AC-Ladeleistung dieses Batteriesystems (W)",
+          "max_discharge_w": "Maximale AC-Entladeleistung dieses Batteriesystems (W)"
+        },
+        "data_description": {
+          "name": "Frei wählbarer, innerhalb dieses Pools eindeutiger Name, z. B. „Speicher Garage“. Gemeint ist ein einzelnes Batteriesystem, nicht der gesamte Pool.",
+          "capacity_kwh": "Die nutzbare Energie dieses Batteriesystems laut Hersteller oder eigener Konfiguration, z. B. 5,12 kWh. Dieser Wert dient der Gewichtung des Pool-Ladezustands. Keine Leistung in W und keinen Sensor auswählen; eine Zahl größer als 0 eingeben.",
+          "soc_entity": "Den Sensor wählen, der den aktuellen Ladezustand (SOC) genau dieses Batteriesystems als Zahl von 0 bis 100 in % meldet, z. B. sensor.speicher_garage_soc. Keinen Spannungs-, Energie- oder Pool-Sensor wählen.",
+          "power_entity": "Den Sensor für die aktuell gemessene Lade-/Entladeleistung auf der AC-Seite genau dieses Batteriesystems in Watt wählen, z. B. sensor.speicher_garage_ac_power. Keinen Energiezähler (kWh), Hausverbrauch, Netzanschluss- oder Sollwert wählen. Werte in kW müssen zuvor in W umgerechnet werden.",
+          "command_entity": "Die number- oder input_number-Entity wählen, über die eine Leistungsvorgabe in Watt an dieses Batteriesystem übergeben werden kann, z. B. number.speicher_garage_power_setpoint. Ein reiner Messsensor, Ein/Aus-Schalter, SOC-Ziel oder Stromlimit in A passt nicht. Ein input_number ist nur geeignet, wenn eine separate Anbindung seinen Wert an den Speicher weitergibt. Gespeichert wird number.set_value bzw. input_number.set_value; Vorzeichen und Betriebsmodus des Geräts müssen zur späteren Steuerung passen.",
+          "min_soc": "Unterhalb dieses Ladezustands soll der Planer keine weitere Entladung vorsehen, z. B. 20 % als Reserve. Wert zwischen 0 und 100; muss kleiner als die obere Ladegrenze sein. Ändert keine Geräteeinstellung.",
+          "max_soc": "Ab diesem Ladezustand soll der Planer keine weitere Ladung vorsehen, z. B. 90 %. Wert zwischen 0 und 100; muss größer als die untere Entladegrenze sein. Ändert keine Geräteeinstellung.",
+          "max_charge_w": "Die für dieses Batteriesystem zulässige AC-Ladeleistung als positiven Watt-Wert eingeben, z. B. 800. Herstellergrenze und vorhandene Gerätekonfiguration berücksichtigen. Keine Kapazität in kWh und keine Gesamtleistung des Pools eingeben. Der vorhandene Planer benötigt Werte größer als 0.",
+          "max_discharge_w": "Die für dieses Batteriesystem zulässige AC-Entladeleistung als positiven Watt-Wert eingeben, z. B. 800. Herstellergrenze und vorhandene Gerätekonfiguration berücksichtigen. Keine negativen Vorzeichen verwenden. Der vorhandene Planer benötigt Werte größer als 0."
         }
       },
       "battery": {
-        "title": "Batteriesystem",
-        "description": "Entities und Grenzen zuordnen. Die Leistungsvorgabe muss ein number oder input_number in Watt sein. Diese Einrichtung steuert noch keine Geräte.",
+        "title": "Batteriesystem bearbeiten",
+        "description": "Ordne ausschließlich Entities desselben Batteriesystems zu. Vergleiche im Zweifel die Einheiten und Werte unter Entwicklerwerkzeuge → Zustände. Der Editor speichert bisher nur die Zuordnung und Grenzen; er sendet noch keine Steuerbefehle.",
         "data": {
-          "name": "Name",
-          "capacity_kwh": "Kapazität (kWh)",
-          "soc_entity": "Ladezustand (%)",
-          "power_entity": "Gemessene AC-Leistung (W)",
-          "command_entity": "Entity für Leistungsvorgabe",
-          "min_soc": "Minimaler Ladezustand (%)",
-          "max_soc": "Maximaler Ladezustand (%)",
-          "max_charge_w": "Maximale Ladeleistung (W)",
-          "max_discharge_w": "Maximale Entladeleistung (W)"
+          "name": "Name dieses Batteriesystems",
+          "capacity_kwh": "Nutzbare Kapazität dieses Batteriesystems (kWh)",
+          "soc_entity": "Sensor für den Ladezustand dieses Batteriesystems (%)",
+          "power_entity": "Sensor für die aktuelle AC-Leistung dieses Batteriesystems (W)",
+          "command_entity": "Beschreibbare Entity für die Leistungsvorgabe (W)",
+          "min_soc": "Untere Entladegrenze (%)",
+          "max_soc": "Obere Ladegrenze (%)",
+          "max_charge_w": "Maximale AC-Ladeleistung dieses Batteriesystems (W)",
+          "max_discharge_w": "Maximale AC-Entladeleistung dieses Batteriesystems (W)"
+        },
+        "data_description": {
+          "name": "Frei wählbarer, innerhalb dieses Pools eindeutiger Name, z. B. „Speicher Garage“. Gemeint ist ein einzelnes Batteriesystem, nicht der gesamte Pool.",
+          "capacity_kwh": "Die nutzbare Energie dieses Batteriesystems laut Hersteller oder eigener Konfiguration, z. B. 5,12 kWh. Dieser Wert dient der Gewichtung des Pool-Ladezustands. Keine Leistung in W und keinen Sensor auswählen; eine Zahl größer als 0 eingeben.",
+          "soc_entity": "Den Sensor wählen, der den aktuellen Ladezustand (SOC) genau dieses Batteriesystems als Zahl von 0 bis 100 in % meldet, z. B. sensor.speicher_garage_soc. Keinen Spannungs-, Energie- oder Pool-Sensor wählen.",
+          "power_entity": "Den Sensor für die aktuell gemessene Lade-/Entladeleistung auf der AC-Seite genau dieses Batteriesystems in Watt wählen, z. B. sensor.speicher_garage_ac_power. Keinen Energiezähler (kWh), Hausverbrauch, Netzanschluss- oder Sollwert wählen. Werte in kW müssen zuvor in W umgerechnet werden.",
+          "command_entity": "Die number- oder input_number-Entity wählen, über die eine Leistungsvorgabe in Watt an dieses Batteriesystem übergeben werden kann, z. B. number.speicher_garage_power_setpoint. Ein reiner Messsensor, Ein/Aus-Schalter, SOC-Ziel oder Stromlimit in A passt nicht. Ein input_number ist nur geeignet, wenn eine separate Anbindung seinen Wert an den Speicher weitergibt. Gespeichert wird number.set_value bzw. input_number.set_value; Vorzeichen und Betriebsmodus des Geräts müssen zur späteren Steuerung passen.",
+          "min_soc": "Unterhalb dieses Ladezustands soll der Planer keine weitere Entladung vorsehen, z. B. 20 % als Reserve. Wert zwischen 0 und 100; muss kleiner als die obere Ladegrenze sein. Ändert keine Geräteeinstellung.",
+          "max_soc": "Ab diesem Ladezustand soll der Planer keine weitere Ladung vorsehen, z. B. 90 %. Wert zwischen 0 und 100; muss größer als die untere Entladegrenze sein. Ändert keine Geräteeinstellung.",
+          "max_charge_w": "Die für dieses Batteriesystem zulässige AC-Ladeleistung als positiven Watt-Wert eingeben, z. B. 800. Herstellergrenze und vorhandene Gerätekonfiguration berücksichtigen. Keine Kapazität in kWh und keine Gesamtleistung des Pools eingeben. Der vorhandene Planer benötigt Werte größer als 0.",
+          "max_discharge_w": "Die für dieses Batteriesystem zulässige AC-Entladeleistung als positiven Watt-Wert eingeben, z. B. 800. Herstellergrenze und vorhandene Gerätekonfiguration berücksichtigen. Keine negativen Vorzeichen verwenden. Der vorhandene Planer benötigt Werte größer als 0."
         }
       },
       "edit_battery": {
         "title": "Batteriesystem auswählen",
         "data": {
-          "battery": "Batteriesystem"
-        }
+          "battery": "Zu bearbeitendes Batteriesystem"
+        },
+        "data_description": {
+          "battery": "Eines der bereits in diesem Pool gespeicherten Batteriesysteme anhand seines Namens auswählen."
+        },
+        "description": "Die gespeicherten Entities, Kapazität und Grenzen dieses Batteriesystems bearbeiten."
       },
       "remove_battery": {
         "title": "Batteriesystem auswählen",
         "data": {
-          "battery": "Batteriesystem"
-        }
+          "battery": "Zu entfernendes Batteriesystem"
+        },
+        "data_description": {
+          "battery": "Eines der bereits in diesem Pool gespeicherten Batteriesysteme anhand seines Namens auswählen."
+        },
+        "description": "Entfernt nur die gespeicherte Zuordnung aus diesem Pool. Das Gerät und seine Home-Assistant-Entities bleiben erhalten. Im nächsten Schritt bestätigst du das Entfernen."
       }
     },
     "error": {
