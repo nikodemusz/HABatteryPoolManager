@@ -1,6 +1,6 @@
 # Virtual Battery Pool
 
-A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.2 adds operating entities, periodic planning, signed-watt command execution, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2.
+A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.2 adds operating entities, periodic planning, signed-watt command execution, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2. Version 0.2.1 fixes setup forms failing to render by using native number selectors and validating finite values on submission.
 
 ## Supported battery adapters
 
@@ -78,7 +78,7 @@ Use Python 3.14 and `python -m pip install -r requirements-dev.txt`, then run:
 python -m pytest -q -o asyncio_default_fixture_loop_scope=function
 ```
 
-Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
+Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, HTTP form serialization, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
 
 ## References and license
 

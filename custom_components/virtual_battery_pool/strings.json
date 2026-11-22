@@ -138,7 +138,8 @@
       "duplicate_command": "This command entity is already assigned to a battery.",
       "grid_required": "Select an existing grid power sensor in W for self-consumption.",
       "grid_confirmation_required": "Verify and confirm the grid measurement sign convention.",
-      "adapters_required": "Add at least one battery and confirm the verified adapter contract for every battery first."
+      "adapters_required": "Add at least one battery and confirm the verified adapter contract for every battery first.",
+      "invalid_number": "Enter a finite number within the permitted range."
     }
   },
   "selector": {

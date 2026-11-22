@@ -138,7 +138,8 @@
       "duplicate_command": "Diese Leistungsvorgabe wird bereits von einem Batteriesystem verwendet.",
       "grid_required": "Für Eigenverbrauch einen vorhandenen Netzleistungssensor in W auswählen.",
       "grid_confirmation_required": "Die Vorzeichen der Netzmessung müssen geprüft und bestätigt sein.",
-      "adapters_required": "Zuerst mindestens ein Batteriesystem anlegen und bei allen die geprüfte Geräteanbindung bestätigen."
+      "adapters_required": "Zuerst mindestens ein Batteriesystem anlegen und bei allen die geprüfte Geräteanbindung bestätigen.",
+      "invalid_number": "Bitte eine endliche Zahl innerhalb des erlaubten Wertebereichs eingeben."
     }
   },
   "selector": {

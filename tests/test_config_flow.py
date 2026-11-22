@@ -82,7 +82,7 @@ async def test_validation_and_multiple_batteries(context):
     assert len(entry.options['batteries']) == 1
 
 
-@pytest.mark.parametrize('changes', [{'capacity_kwh': float('nan')}, {'max_charge_w': float('inf')}, {'capacity_kwh': 0}, {'min_soc': -1}, {'max_soc': 101}, {'max_charge_w': -1}, {'command_entity': 'switch.command'}])
+@pytest.mark.parametrize('changes', [{'capacity_kwh': 0}, {'min_soc': -1}, {'max_soc': 101}, {'max_charge_w': -1}, {'command_entity': 'switch.command'}])
 def test_invalid_schema_values(changes):
     with pytest.raises(vol.Invalid):
         values(**changes)
@@ -115,3 +115,68 @@ async def test_duplicate_command_entity_is_rejected(context):
     await flow.async_step_init()
     result = await flow.async_step_add_battery(values(name='Second'))
     assert result['errors']['command_entity'] == 'duplicate_command'
+
+
+
+def api_payload(result):
+    """Use the exact HTTP response conversion which raised in production."""
+    import json
+    from homeassistant.helpers.data_entry_flow import _BaseFlowManagerView
+    payload = _BaseFlowManagerView(None)._prepare_result_json(result)
+    return json.loads(json.dumps(payload, allow_nan=False))
+
+
+@pytest.mark.asyncio
+async def test_all_setup_forms_serialize_through_home_assistant_http(context):
+    from custom_components.virtual_battery_pool.config_flow import VirtualBatteryPoolConfigFlow
+    config_flow = VirtualBatteryPoolConfigFlow()
+    assert api_payload(await config_flow.async_step_user())['step_id'] == 'user'
+    entry, new_flow = context
+    flow = new_flow()
+    api_payload(await flow.async_step_init())
+    add = api_payload(await flow.async_step_add_battery())
+    numeric = {f['name']: f['selector']['number'] for f in add['data_schema'] if 'number' in f.get('selector', {})}
+    assert set(numeric) == {'capacity_kwh', 'min_soc', 'max_soc', 'max_charge_w', 'max_discharge_w'}
+    assert numeric['capacity_kwh']['unit_of_measurement'] == 'kWh'
+    assert numeric['min_soc']['max'] == 100
+    assert numeric['max_charge_w']['min'] == 1
+    settings = api_payload(await flow.async_step_control_settings())
+    grid = next(f for f in settings['data_schema'] if f['name'] == 'grid_target_w')
+    assert grid['selector']['number']['unit_of_measurement'] == 'W'
+    entry.options = (await flow.async_step_add_battery(values()))['data']
+    battery_id = entry.options['batteries'][0]['id']
+    flow = new_flow()
+    api_payload(await flow.async_step_init())
+    api_payload(await flow.async_step_edit_battery())
+    api_payload(await flow.async_step_edit_battery({'battery': battery_id}))
+    api_payload(await flow.async_step_battery(values(name='')))
+    api_payload(await flow.async_step_remove_battery())
+    api_payload(await flow.async_step_remove_battery({'battery': battery_id}))
+    api_payload(await flow.async_step_confirm_remove())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('field', ['capacity_kwh', 'min_soc', 'max_soc', 'max_charge_w', 'max_discharge_w'])
+@pytest.mark.parametrize('invalid', [float('nan'), float('inf'), -float('inf'), 'not a number'])
+async def test_invalid_numbers_return_serializable_field_errors(context, field, invalid):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    data = values()
+    data[field] = invalid
+    result = await flow.async_step_add_battery(data)
+    assert result['errors'][field] == 'invalid_number'
+    api_payload(result)
+    assert entry.options == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('invalid', [float('nan'), float('inf'), -float('inf'), -1, 10001])
+async def test_invalid_grid_target_returns_serializable_error(context, invalid):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    result = await flow.async_step_control_settings({'control_mode': 'external', 'live_control': False, 'grid_confirmed': False, 'grid_target_w': invalid})
+    assert result['errors']['grid_target_w'] == 'invalid_number'
+    api_payload(result)
+    assert entry.options == {}
