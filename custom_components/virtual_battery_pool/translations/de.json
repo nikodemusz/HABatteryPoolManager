@@ -32,62 +32,86 @@
       },
       "add_battery": {
         "title": "Batteriesystem hinzufügen",
-        "description": "Entities desselben Batteriesystems zuordnen. Starte in der Simulation und prüfe den Plan in den Status-Entities. Die Live-Ausgabe wird separat unter „Betriebsart und Live-Ausgabe“ freigegeben. BMS und Geräteschutz bleiben erforderlich.",
+        "description": "Leistungsanforderungen und Maximalwerte getrennt zuordnen: Sollwert-Regler werden gesteuert, Maximal-Regler nur gelesen. Die zusätzlichen Pool-Obergrenzen gelten immer. Zuerst in Simulation prüfen; Live-Ausgabe und Geräteanbindung bleiben separat freizugeben.",
         "data": {
           "name": "Name dieses Batteriesystems",
           "capacity_kwh": "Nutzbare Kapazität dieses Batteriesystems (kWh)",
           "soc_entity": "Sensor für den Ladezustand dieses Batteriesystems (%)",
           "power_entity": "Sensor für die aktuelle AC-Leistung dieses Batteriesystems (W)",
-          "command_entity": "Beschreibbare Entity für die Leistungsvorgabe (W)",
+          "command_entity": "Gemeinsamer Sollwert-Regler (nur mit Vorzeichen)",
           "min_soc": "Untere Entladegrenze (%)",
           "max_soc": "Obere Ladegrenze (%)",
-          "max_charge_w": "Maximale AC-Ladeleistung dieses Batteriesystems (W)",
-          "max_discharge_w": "Maximale AC-Entladeleistung dieses Batteriesystems (W)",
-          "positive_discharge": "Positive Werte bedeuten Entladen",
-          "adapter_confirmed": "Geräteanbindung und Ausfallschutz geprüft"
+          "max_charge_w": "Zusätzliche Pool-Obergrenze Laden (W)",
+          "max_discharge_w": "Zusätzliche Pool-Obergrenze Entladen (W)",
+          "positive_discharge": "Positive gemessene AC-Leistung bedeutet Entladen",
+          "adapter_confirmed": "Geräteanbindung und Ausfallschutz geprüft",
+          "command_mode": "Art der Leistungs-Sollwerte",
+          "charge_command_entity": "Jetzt angeforderte Ladeleistung – Sollwert-Regler (W)",
+          "discharge_command_entity": "Jetzt angeforderte Entladeleistung – Sollwert-Regler (W)",
+          "max_charge_entity": "Maximale Ladeleistung am Gerät – nur lesen (optional)",
+          "max_discharge_entity": "Maximale Entladeleistung am Gerät – nur lesen (optional)",
+          "power_unit_w_confirmed": "Regler ohne angezeigte Einheit verwenden Watt"
         },
         "data_description": {
           "name": "Frei wählbarer, innerhalb dieses Pools eindeutiger Name, z. B. „Speicher Garage“. Gemeint ist ein einzelnes Batteriesystem, nicht der gesamte Pool.",
           "capacity_kwh": "Die nutzbare Energie dieses Batteriesystems laut Hersteller oder eigener Konfiguration, z. B. 5,12 kWh. Dieser Wert dient der Gewichtung des Pool-Ladezustands. Keine Leistung in W und keinen Sensor auswählen; eine Zahl größer als 0 eingeben.",
           "soc_entity": "Den Sensor wählen, der den aktuellen Ladezustand (SOC) genau dieses Batteriesystems als Zahl von 0 bis 100 in % meldet, z. B. sensor.speicher_garage_soc. Keinen Spannungs-, Energie- oder Pool-Sensor wählen.",
           "power_entity": "Den Sensor für die aktuell gemessene Lade-/Entladeleistung auf der AC-Seite genau dieses Batteriesystems in Watt wählen, z. B. sensor.speicher_garage_ac_power. Keinen Energiezähler (kWh), Hausverbrauch, Netzanschluss- oder Sollwert wählen. Werte in kW müssen zuvor in W umgerechnet werden.",
-          "command_entity": "Beschreibbare number- oder input_number-Entity für vorzeichenbehaftete Leistung in W. Der Wertebereich muss 0 sowie die konfigurierte Lade- und Entladeleistung abdecken. Ein positiver reiner Leistungsbegrenzer, SOC-Ziel, A-Stromlimit oder Messsensor reicht nicht aus. input_number steuert ein Gerät nur über eine separate Weiterleitung. Aufgerufen wird der passende set_value-Dienst.",
+          "command_entity": "Nur im Modus „Gemeinsamer Sollwert mit Vorzeichen“ auswählen: number oder input_number für die aktuelle Leistung in W, mit Laden und Entladen über positive/negative Werte und 0 zum Stoppen. Keine maximale Lade- oder Entladeleistung auswählen.",
           "min_soc": "Unterhalb dieses Ladezustands wird der Planer keine weitere Entladung vorsehen, z. B. 20 % als Reserve. Wert zwischen 0 und 100; muss kleiner als die obere Ladegrenze sein. Ändert keine Geräteeinstellung.",
           "max_soc": "Ab diesem Ladezustand wird der Planer keine weitere Ladung vorsehen, z. B. 90 %. Wert zwischen 0 und 100; muss größer als die untere Entladegrenze sein. Ändert keine Geräteeinstellung.",
-          "max_charge_w": "Positive Obergrenze pro Speicher in W; Standard 300 W. Größer als 0 und höchstens so hoch wie vom Hersteller, BMS und der Gerätekonfiguration erlaubt. Keine Kapazität in kWh oder Gesamtleistung des Pools. Dies ist eine Softwaregrenze, kein Ersatz für den Geräteschutz.",
-          "max_discharge_w": "Positive Obergrenze pro Speicher in W; Standard 300 W. Größer als 0 und höchstens so hoch wie vom Hersteller, BMS und der Gerätekonfiguration erlaubt. Kein negatives Vorzeichen verwenden. Dies ist eine Softwaregrenze, kein Ersatz für den Geräteschutz.",
-          "positive_discharge": "Gilt für Leistungsvorgabe UND gemessene AC-Leistung: eingeschaltet = positiv entladen, negativ laden; ausgeschaltet = positiv laden, negativ entladen. Falls die Entities unterschiedliche Vorzeichen verwenden, zuvor einen passenden Adapter erstellen.",
-          "adapter_confirmed": "Nur bestätigen, wenn die Entity beide Leistungsrichtungen als vorzeichenbehaftete Watt-Werte unterstützt, 0 W sicher stoppt, der richtige Fernsteuerungsmodus am Gerät aktiv ist und ein geräteseitiger Timeout bei ausbleibenden Befehlen sicher auf 0 zurückfällt. Ein input_number benötigt eine separate Weiterleitung einschließlich Watchdog. Ohne diese Bestätigung bleibt die Live-Ausgabe gesperrt."
+          "max_charge_w": "Zusätzliche Softwaregrenze pro Speicher; Standard 300 W, größer als 0. Der aktuelle Lade-Sollwert wird höchstens so hoch wie diese Grenze UND der optional verknüpfte maximale Ladewert am Gerät. Hier keinen Sollwert-Regler auswählen und keinen momentanen Ladebefehl eingeben.",
+          "max_discharge_w": "Zusätzliche Softwaregrenze pro Speicher; Standard 300 W, größer als 0. Der aktuelle Entlade-Sollwert wird höchstens so hoch wie diese Grenze UND der optional verknüpfte maximale Entladewert am Gerät. Hier keinen Sollwert-Regler auswählen und keinen momentanen Entladebefehl eingeben.",
+          "positive_discharge": "Vorzeichen des gemessenen AC-Leistungssensors: eingeschaltet = positiv entladen, negativ laden; ausgeschaltet = umgekehrt. Beim gemeinsamen Sollwert muss auch dessen Vorzeichen so funktionieren. Getrennte Lade- und Entlade-Sollwerte sind immer positive Beträge.",
+          "adapter_confirmed": "Bestätigen, dass die ausgewählten Regler aktuelle Leistungsanforderungen steuern, der richtige Fernsteuerungsmodus aktiv ist und ein geräteseitiger Watchdog bei ausbleibenden Befehlen stoppt. Getrennte Sollwerte müssen mit 0 beide Richtungen stoppen; der gemeinsame Regler muss mit 0 stoppen und beide Vorzeichen unterstützen. Ein input_number benötigt eine echte Geräteanbindung. Maximal-Regler allein reichen nicht aus.",
+          "command_mode": "Getrennte Sollwerte: je ein Regler für die jetzt geforderte Lade- und Entladeleistung, jeweils als positive Watt-Zahl. Dies passt zu Geräten mit vier Reglern (zwei Sollwerte und zwei Maximalwerte). Mit Vorzeichen: ein gemeinsamer Regler für beide Richtungen. Nur die zum gewählten Modus gehörenden Sollwert-Felder werden verwendet.",
+          "charge_command_entity": "Im Modus „Getrennte Lade-/Entlade-Sollwerte“ den Regler auswählen, der die JETZT geforderte Ladeleistung vorgibt, z. B. „Ladeleistung einstellen“. Positive Werte laden; 0 beendet die Ladeanforderung. Nicht „Maximale Ladeleistung“ auswählen. Vor jedem Ladebefehl wird die Entladeanforderung auf 0 gesetzt.",
+          "discharge_command_entity": "Im Modus „Getrennte Lade-/Entlade-Sollwerte“ den Regler auswählen, der die JETZT geforderte Entladeleistung vorgibt, z. B. „Entladeleistung einstellen“. Positive Werte entladen; 0 beendet die Entladeanforderung. Nicht „Maximale Entladeleistung“ auswählen. Vor jedem Entladebefehl wird die Ladeanforderung auf 0 gesetzt.",
+          "max_charge_entity": "Optional den separaten Regler oder Sensor „Maximale Ladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Ladebefehl. Ein Wert von 0 sperrt Laden; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
+          "max_discharge_entity": "Optional den separaten Regler oder Sensor „Maximale Entladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Entladebefehl. Ein Wert von 0 sperrt Entladen; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
+          "power_unit_w_confirmed": "Nur bestätigen, wenn laut Gerätebeschreibung die gewählten Sollwert- und Maximal-Regler tatsächlich Watt verwenden, Home Assistant aber keine Einheit anzeigt. Dann sind fehlende Einheiten bei diesen Reglern erlaubt. A, kW oder % werden nicht umgerechnet und bleiben unzulässig. Die Messsensoren benötigen weiterhin die korrekten Einheiten."
         }
       },
       "battery": {
         "title": "Batteriesystem bearbeiten",
-        "description": "Entities desselben Batteriesystems zuordnen. Starte in der Simulation und prüfe den Plan in den Status-Entities. Die Live-Ausgabe wird separat unter „Betriebsart und Live-Ausgabe“ freigegeben. BMS und Geräteschutz bleiben erforderlich.",
+        "description": "Leistungsanforderungen und Maximalwerte getrennt zuordnen: Sollwert-Regler werden gesteuert, Maximal-Regler nur gelesen. Die zusätzlichen Pool-Obergrenzen gelten immer. Zuerst in Simulation prüfen; Live-Ausgabe und Geräteanbindung bleiben separat freizugeben.",
         "data": {
           "name": "Name dieses Batteriesystems",
           "capacity_kwh": "Nutzbare Kapazität dieses Batteriesystems (kWh)",
           "soc_entity": "Sensor für den Ladezustand dieses Batteriesystems (%)",
           "power_entity": "Sensor für die aktuelle AC-Leistung dieses Batteriesystems (W)",
-          "command_entity": "Beschreibbare Entity für die Leistungsvorgabe (W)",
+          "command_entity": "Gemeinsamer Sollwert-Regler (nur mit Vorzeichen)",
           "min_soc": "Untere Entladegrenze (%)",
           "max_soc": "Obere Ladegrenze (%)",
-          "max_charge_w": "Maximale AC-Ladeleistung dieses Batteriesystems (W)",
-          "max_discharge_w": "Maximale AC-Entladeleistung dieses Batteriesystems (W)",
-          "positive_discharge": "Positive Werte bedeuten Entladen",
-          "adapter_confirmed": "Geräteanbindung und Ausfallschutz geprüft"
+          "max_charge_w": "Zusätzliche Pool-Obergrenze Laden (W)",
+          "max_discharge_w": "Zusätzliche Pool-Obergrenze Entladen (W)",
+          "positive_discharge": "Positive gemessene AC-Leistung bedeutet Entladen",
+          "adapter_confirmed": "Geräteanbindung und Ausfallschutz geprüft",
+          "command_mode": "Art der Leistungs-Sollwerte",
+          "charge_command_entity": "Jetzt angeforderte Ladeleistung – Sollwert-Regler (W)",
+          "discharge_command_entity": "Jetzt angeforderte Entladeleistung – Sollwert-Regler (W)",
+          "max_charge_entity": "Maximale Ladeleistung am Gerät – nur lesen (optional)",
+          "max_discharge_entity": "Maximale Entladeleistung am Gerät – nur lesen (optional)",
+          "power_unit_w_confirmed": "Regler ohne angezeigte Einheit verwenden Watt"
         },
         "data_description": {
           "name": "Frei wählbarer, innerhalb dieses Pools eindeutiger Name, z. B. „Speicher Garage“. Gemeint ist ein einzelnes Batteriesystem, nicht der gesamte Pool.",
           "capacity_kwh": "Die nutzbare Energie dieses Batteriesystems laut Hersteller oder eigener Konfiguration, z. B. 5,12 kWh. Dieser Wert dient der Gewichtung des Pool-Ladezustands. Keine Leistung in W und keinen Sensor auswählen; eine Zahl größer als 0 eingeben.",
           "soc_entity": "Den Sensor wählen, der den aktuellen Ladezustand (SOC) genau dieses Batteriesystems als Zahl von 0 bis 100 in % meldet, z. B. sensor.speicher_garage_soc. Keinen Spannungs-, Energie- oder Pool-Sensor wählen.",
           "power_entity": "Den Sensor für die aktuell gemessene Lade-/Entladeleistung auf der AC-Seite genau dieses Batteriesystems in Watt wählen, z. B. sensor.speicher_garage_ac_power. Keinen Energiezähler (kWh), Hausverbrauch, Netzanschluss- oder Sollwert wählen. Werte in kW müssen zuvor in W umgerechnet werden.",
-          "command_entity": "Beschreibbare number- oder input_number-Entity für vorzeichenbehaftete Leistung in W. Der Wertebereich muss 0 sowie die konfigurierte Lade- und Entladeleistung abdecken. Ein positiver reiner Leistungsbegrenzer, SOC-Ziel, A-Stromlimit oder Messsensor reicht nicht aus. input_number steuert ein Gerät nur über eine separate Weiterleitung. Aufgerufen wird der passende set_value-Dienst.",
+          "command_entity": "Nur im Modus „Gemeinsamer Sollwert mit Vorzeichen“ auswählen: number oder input_number für die aktuelle Leistung in W, mit Laden und Entladen über positive/negative Werte und 0 zum Stoppen. Keine maximale Lade- oder Entladeleistung auswählen.",
           "min_soc": "Unterhalb dieses Ladezustands wird der Planer keine weitere Entladung vorsehen, z. B. 20 % als Reserve. Wert zwischen 0 und 100; muss kleiner als die obere Ladegrenze sein. Ändert keine Geräteeinstellung.",
           "max_soc": "Ab diesem Ladezustand wird der Planer keine weitere Ladung vorsehen, z. B. 90 %. Wert zwischen 0 und 100; muss größer als die untere Entladegrenze sein. Ändert keine Geräteeinstellung.",
-          "max_charge_w": "Positive Obergrenze pro Speicher in W; Standard 300 W. Größer als 0 und höchstens so hoch wie vom Hersteller, BMS und der Gerätekonfiguration erlaubt. Keine Kapazität in kWh oder Gesamtleistung des Pools. Dies ist eine Softwaregrenze, kein Ersatz für den Geräteschutz.",
-          "max_discharge_w": "Positive Obergrenze pro Speicher in W; Standard 300 W. Größer als 0 und höchstens so hoch wie vom Hersteller, BMS und der Gerätekonfiguration erlaubt. Kein negatives Vorzeichen verwenden. Dies ist eine Softwaregrenze, kein Ersatz für den Geräteschutz.",
-          "positive_discharge": "Gilt für Leistungsvorgabe UND gemessene AC-Leistung: eingeschaltet = positiv entladen, negativ laden; ausgeschaltet = positiv laden, negativ entladen. Falls die Entities unterschiedliche Vorzeichen verwenden, zuvor einen passenden Adapter erstellen.",
-          "adapter_confirmed": "Nur bestätigen, wenn die Entity beide Leistungsrichtungen als vorzeichenbehaftete Watt-Werte unterstützt, 0 W sicher stoppt, der richtige Fernsteuerungsmodus am Gerät aktiv ist und ein geräteseitiger Timeout bei ausbleibenden Befehlen sicher auf 0 zurückfällt. Ein input_number benötigt eine separate Weiterleitung einschließlich Watchdog. Ohne diese Bestätigung bleibt die Live-Ausgabe gesperrt."
+          "max_charge_w": "Zusätzliche Softwaregrenze pro Speicher; Standard 300 W, größer als 0. Der aktuelle Lade-Sollwert wird höchstens so hoch wie diese Grenze UND der optional verknüpfte maximale Ladewert am Gerät. Hier keinen Sollwert-Regler auswählen und keinen momentanen Ladebefehl eingeben.",
+          "max_discharge_w": "Zusätzliche Softwaregrenze pro Speicher; Standard 300 W, größer als 0. Der aktuelle Entlade-Sollwert wird höchstens so hoch wie diese Grenze UND der optional verknüpfte maximale Entladewert am Gerät. Hier keinen Sollwert-Regler auswählen und keinen momentanen Entladebefehl eingeben.",
+          "positive_discharge": "Vorzeichen des gemessenen AC-Leistungssensors: eingeschaltet = positiv entladen, negativ laden; ausgeschaltet = umgekehrt. Beim gemeinsamen Sollwert muss auch dessen Vorzeichen so funktionieren. Getrennte Lade- und Entlade-Sollwerte sind immer positive Beträge.",
+          "adapter_confirmed": "Bestätigen, dass die ausgewählten Regler aktuelle Leistungsanforderungen steuern, der richtige Fernsteuerungsmodus aktiv ist und ein geräteseitiger Watchdog bei ausbleibenden Befehlen stoppt. Getrennte Sollwerte müssen mit 0 beide Richtungen stoppen; der gemeinsame Regler muss mit 0 stoppen und beide Vorzeichen unterstützen. Ein input_number benötigt eine echte Geräteanbindung. Maximal-Regler allein reichen nicht aus.",
+          "command_mode": "Getrennte Sollwerte: je ein Regler für die jetzt geforderte Lade- und Entladeleistung, jeweils als positive Watt-Zahl. Dies passt zu Geräten mit vier Reglern (zwei Sollwerte und zwei Maximalwerte). Mit Vorzeichen: ein gemeinsamer Regler für beide Richtungen. Nur die zum gewählten Modus gehörenden Sollwert-Felder werden verwendet.",
+          "charge_command_entity": "Im Modus „Getrennte Lade-/Entlade-Sollwerte“ den Regler auswählen, der die JETZT geforderte Ladeleistung vorgibt, z. B. „Ladeleistung einstellen“. Positive Werte laden; 0 beendet die Ladeanforderung. Nicht „Maximale Ladeleistung“ auswählen. Vor jedem Ladebefehl wird die Entladeanforderung auf 0 gesetzt.",
+          "discharge_command_entity": "Im Modus „Getrennte Lade-/Entlade-Sollwerte“ den Regler auswählen, der die JETZT geforderte Entladeleistung vorgibt, z. B. „Entladeleistung einstellen“. Positive Werte entladen; 0 beendet die Entladeanforderung. Nicht „Maximale Entladeleistung“ auswählen. Vor jedem Entladebefehl wird die Ladeanforderung auf 0 gesetzt.",
+          "max_charge_entity": "Optional den separaten Regler oder Sensor „Maximale Ladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Ladebefehl. Ein Wert von 0 sperrt Laden; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
+          "max_discharge_entity": "Optional den separaten Regler oder Sensor „Maximale Entladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Entladebefehl. Ein Wert von 0 sperrt Entladen; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
+          "power_unit_w_confirmed": "Nur bestätigen, wenn laut Gerätebeschreibung die gewählten Sollwert- und Maximal-Regler tatsächlich Watt verwenden, Home Assistant aber keine Einheit anzeigt. Dann sind fehlende Einheiten bei diesen Reglern erlaubt. A, kW oder % werden nicht umgerechnet und bleiben unzulässig. Die Messsensoren benötigen weiterhin die korrekten Einheiten."
         }
       },
       "edit_battery": {
@@ -135,11 +159,12 @@
       "invalid_soc_range": "Der minimale Ladezustand muss kleiner als der maximale sein.",
       "distinct_sensors": "Separate Sensoren für Ladezustand und Leistung auswählen.",
       "entity_missing": "Diese Entity existiert nicht mehr.",
-      "duplicate_command": "Diese Leistungsvorgabe wird bereits von einem Batteriesystem verwendet.",
+      "duplicate_command": "Sollwert-Regler müssen eindeutig sein und dürfen nicht gleichzeitig als Maximalwert verwendet werden.",
       "grid_required": "Für Eigenverbrauch einen vorhandenen Netzleistungssensor in W auswählen.",
       "grid_confirmation_required": "Die Vorzeichen der Netzmessung müssen geprüft und bestätigt sein.",
       "adapters_required": "Zuerst mindestens ein Batteriesystem anlegen und bei allen die geprüfte Geräteanbindung bestätigen.",
-      "invalid_number": "Bitte eine endliche Zahl innerhalb des erlaubten Wertebereichs eingeben."
+      "invalid_number": "Bitte eine endliche Zahl innerhalb des erlaubten Wertebereichs eingeben.",
+      "command_required": "Den zum gewählten Modus gehörenden Sollwert-Regler auswählen."
     }
   },
   "selector": {
@@ -147,6 +172,12 @@
       "options": {
         "external": "Externer Leistungs-Sollwert",
         "autonomous": "Eigenverbrauch am Netzanschluss"
+      }
+    },
+    "command_mode": {
+      "options": {
+        "separate": "Getrennte Lade-/Entlade-Sollwerte",
+        "signed": "Gemeinsamer Sollwert mit Vorzeichen"
       }
     }
   },

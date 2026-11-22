@@ -53,15 +53,32 @@ def validate_numbers(data, bounds):
     return errors
 
 
+
+def configured_command_entities(config):
+    keys = ("charge_command_entity", "discharge_command_entity") if config.get("command_mode", "signed") == "separate" else ("command_entity",)
+    return {config[key] for key in keys if config.get(key)}
+
+
+def configured_limit_entities(config):
+    return {config[key] for key in ("max_charge_entity", "max_discharge_entity") if config.get(key)}
+
+
 def battery_schema(values=None):
     values = values or {}
     fields = {}
+    mode = values.get("command_mode", "signed" if values.get("command_entity") else "separate")
     definitions = {
         "name": ("", str),
         "capacity_kwh": (5.0, number_selector(0.001, unit="kWh")),
         "soc_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))),
         "power_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))),
+        "command_mode": (mode, selector.SelectSelector(selector.SelectSelectorConfig(options=["separate", "signed"], translation_key="command_mode"))),
         "command_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))),
+        "charge_command_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))),
+        "discharge_command_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))),
+        "max_charge_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number", "sensor"]))),
+        "max_discharge_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number", "sensor"]))),
+        "power_unit_w_confirmed": (False, selector.BooleanSelector()),
         "positive_discharge": (True, selector.BooleanSelector()),
         "adapter_confirmed": (False, selector.BooleanSelector()),
         "min_soc": (20.0, number_selector(0, 100, "%")),
@@ -71,7 +88,12 @@ def battery_schema(values=None):
     }
     for key, (default, validator) in definitions.items():
         default = values.get(key, default)
-        marker = vol.Required(key) if default is None else vol.Required(key, default=default)
+        optional = key in {"command_entity", "charge_command_entity", "discharge_command_entity", "max_charge_entity", "max_discharge_entity"}
+        if optional:
+            # A suggested selection can be cleared; a backend default would silently restore it.
+            marker = vol.Optional(key, description={"suggested_value": default}) if default is not None else vol.Optional(key)
+        else:
+            marker = vol.Required(key) if default is None else vol.Required(key, default=default)
         fields[marker] = validator
     return vol.Schema(fields)
 
@@ -133,17 +155,40 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
                 errors["min_soc"] = "invalid_soc_range"
             if data["soc_entity"] == data["power_entity"]:
                 errors["power_entity"] = "distinct_sensors"
-            for field in ("soc_entity", "power_entity", "command_entity"):
-                if self.hass.states.get(data[field]) is None:
+            data.setdefault("command_mode", "signed")
+            command_fields = ("charge_command_entity", "discharge_command_entity") if data["command_mode"] == "separate" else ("command_entity",)
+            for field in ("soc_entity", "power_entity", *command_fields, "max_charge_entity", "max_discharge_entity"):
+                if not data.get(field):
+                    if field in command_fields:
+                        errors[field] = "command_required"
+                elif self.hass.states.get(data[field]) is None:
                     errors[field] = "entity_missing"
-            if any(b["command_entity"] == data["command_entity"] and b["id"] != self._selected for b in self._batteries):
-                errors["command_entity"] = "duplicate_command"
+            commands = configured_command_entities(data)
+            limits = configured_limit_entities(data)
+            if len(commands) != len(command_fields) and all(data.get(k) for k in command_fields):
+                errors[command_fields[-1]] = "duplicate_command"
+            conflicts = commands & limits
+            others = [b for b in self._batteries if b["id"] != self._selected]
             for entry in self.hass.config_entries.async_entries(DOMAIN):
-                if entry.entry_id != self.config_entry.entry_id and any(b["command_entity"] == data["command_entity"] for b in entry.options.get(CONF_BATTERIES, [])):
-                    errors["command_entity"] = "duplicate_command"
+                if entry.entry_id != self.config_entry.entry_id:
+                    others.extend(entry.options.get(CONF_BATTERIES, []))
+            for other in others:
+                other_commands = configured_command_entities(other)
+                other_limits = configured_limit_entities(other)
+                conflicts |= commands & (other_commands | other_limits)
+                conflicts |= limits & other_commands
+            for field in (*command_fields, "max_charge_entity", "max_discharge_entity"):
+                if data.get(field) in conflicts:
+                    errors[field] = "duplicate_command"
             if not errors:
                 data["id"] = existing.get("id", uuid4().hex)
-                data["command_service"] = data["command_entity"].split(".")[0] + ".set_value"
+                if data["command_mode"] == "signed":
+                    data["command_service"] = data["command_entity"].split(".")[0] + ".set_value"
+                    data.pop("charge_command_entity", None)
+                    data.pop("discharge_command_entity", None)
+                else:
+                    data.pop("command_entity", None)
+                    data.pop("command_service", None)
                 if existing:
                     self._batteries[self._batteries.index(existing)] = data
                 else:

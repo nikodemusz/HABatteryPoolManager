@@ -1,6 +1,6 @@
-"""Periodic, serialized planning and optional execution of signed watt setpoints."""
+"""Periodic planning and optional execution of signed or separate watt setpoints."""
 import asyncio
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import timedelta
 import logging
 import math
@@ -30,6 +30,7 @@ class PoolRuntime:
         self.target_at = None
         self.status = "disabled"
         self.fault = None
+        self.input_error = None
         self.soc = None
         self.measured = None
         self.planned = 0.0
@@ -64,34 +65,92 @@ class PoolRuntime:
             raise ValueError(f"Invalid or stale reading: {entity}")
         return value, stamp
 
+    def _power_unit_valid(self, state, battery):
+        unit = state.attributes.get("unit_of_measurement")
+        return unit == "W" or (unit is None and battery.power_unit_w_confirmed)
+
+    def _effective_batteries(self, now):
+        """Read device limits without ever changing their entities."""
+        result = []
+        for battery in self.batteries:
+            limits = {}
+            for field, entity in (("max_charge_w", battery.max_charge_entity), ("max_discharge_w", battery.max_discharge_entity)):
+                if not entity:
+                    continue
+                state = self.hass.states.get(entity)
+                if state is None or not self._power_unit_valid(state, battery):
+                    raise ValueError(f"Device limit unavailable or not in W: {entity}")
+                value = float(state.state)
+                # Number entities hold persistent configuration, not telemetry.
+                # Only a sensor supplying a dynamic limit needs a fresh report.
+                stale = entity.startswith("sensor.") and not 0 <= (now - state.last_reported).total_seconds() <= 60
+                if not math.isfinite(value) or value < 0 or stale:
+                    raise ValueError(f"Invalid or stale device limit: {entity}")
+                limits[field] = min(getattr(battery, field), value)
+            result.append(replace(battery, **limits))
+        return tuple(result)
+
+    def _command_state(self, battery, entity, lower, upper):
+        domain = entity.split(".")[0]
+        if domain not in ("number", "input_number") or not self.hass.services.has_service(domain, "set_value"):
+            raise ValueError(f"Command service unavailable: {entity}")
+        state = self.hass.states.get(entity)
+        if state is None or state.state in ("unknown", "unavailable") or not self._power_unit_valid(state, battery):
+            raise ValueError(f"Command entity unavailable or not in W: {entity}")
+        if not math.isfinite(float(state.state)):
+            raise ValueError(f"Invalid command state: {entity}")
+        minimum, maximum = (float(state.attributes[k]) for k in ("min", "max"))
+        if not all(math.isfinite(v) for v in (minimum, maximum)) or not minimum <= lower <= upper <= maximum:
+            raise ValueError(f"Command range does not cover configured power limits and zero: {entity}")
+        step = float(state.attributes.get("step", 1))
+        if not math.isfinite(step) or step <= 0 or abs(minimum / step - round(minimum / step)) > 1e-6:
+            raise ValueError(f"Command step cannot represent zero: {entity}")
+        return state
+
     def _validate_adapters(self):
         if not self.batteries:
             raise ValueError("No batteries configured")
-        command_ids = [b.command_entity for b in self.batteries]
-        if len(set(command_ids)) != len(command_ids):
-            raise ValueError("Duplicate command entities")
+        command_ids = [entity for b in self.batteries for entity in b.command_entities]
+        limit_ids = {entity for b in self.batteries for entity in b.limit_entities}
+        if len(set(command_ids)) != len(command_ids) or set(command_ids) & limit_ids:
+            raise ValueError("Duplicate command entities or overlap with device limits")
         for other in self.hass.data.get(DOMAIN, {}).values():
             if other is not self and other.enabled and other.live:
-                if set(command_ids) & {b.command_entity for b in other.batteries}:
-                    raise ValueError("Command entity already controlled by another pool")
+                other_commands = {entity for b in other.batteries for entity in b.command_entities}
+                other_limits = {entity for b in other.batteries for entity in b.limit_entities}
+                if set(command_ids) & (other_commands | other_limits) or limit_ids & other_commands:
+                    raise ValueError("Command entity already controlled by another pool or used as a device limit")
         for b in self.batteries:
-            domain = b.command_entity.split(".")[0]
             if not b.adapter_confirmed:
                 raise ValueError(f"Adapter contract not confirmed: {b.name}")
-            if domain not in ("number", "input_number") or b.command_service != f"{domain}.set_value":
-                raise ValueError(f"Unsupported command service: {b.name}")
-            if not self.hass.services.has_service(domain, "set_value"):
-                raise ValueError(f"Command service unavailable: {b.name}")
-            state = self.hass.states.get(b.command_entity)
-            if state is None or state.state in ("unknown", "unavailable") or state.attributes.get("unit_of_measurement") != "W":
-                raise ValueError(f"Command entity unavailable or not in W: {b.name}")
-            if not math.isfinite(float(state.state)):
-                raise ValueError(f"Invalid command state: {b.name}")
-            minimum, maximum = (float(state.attributes[k]) for k in ("min", "max"))
-            charge = -b.max_charge_w if b.positive_discharge else b.max_charge_w
-            discharge = b.max_discharge_w if b.positive_discharge else -b.max_discharge_w
-            if not all(math.isfinite(v) for v in (minimum, maximum)) or not minimum <= min(0, charge, discharge) <= max(0, charge, discharge) <= maximum:
-                raise ValueError(f"Command range does not cover signed power limits and zero: {b.name}")
+            if b.command_mode == "separate":
+                self._command_state(b, b.charge_command_entity, 0, b.max_charge_w)
+                self._command_state(b, b.discharge_command_entity, 0, b.max_discharge_w)
+            elif b.command_mode == "signed":
+                domain = b.command_entity.split(".")[0]
+                if b.command_service != f"{domain}.set_value":
+                    raise ValueError(f"Unsupported command service: {b.name}")
+                charge = -b.max_charge_w if b.positive_discharge else b.max_charge_w
+                discharge = b.max_discharge_w if b.positive_discharge else -b.max_discharge_w
+                self._command_state(b, b.command_entity, min(0, charge, discharge), max(0, charge, discharge))
+            else:
+                raise ValueError(f"Unknown command mode: {b.name}")
+
+    def _command_targets(self):
+        result = []
+        for b in self.batteries:
+            power = self.outputs.get(b.name, 0)
+            if b.command_mode == "separate":
+                outputs = ((b.charge_command_entity, max(0, -power)), (b.discharge_command_entity, max(0, power)))
+            else:
+                outputs = ((b.command_entity, power * (1 if b.positive_discharge else -1)),)
+            for entity, value in outputs:
+                state = self.hass.states.get(entity)
+                step = float(state.attributes.get("step", 1))
+                # Preflight has checked zero alignment and a finite positive step.
+                value = math.trunc(value / step) * step
+                result.append((replace(b, command_entity=entity), value))
+        return result
 
     async def _write(self, battery, value):
         domain = battery.command_entity.split(".")[0]
@@ -107,11 +166,12 @@ class PoolRuntime:
         for b in self.batteries:
             if not b.adapter_confirmed:
                 continue
-            try:
-                await self._write(b, 0)
-            except Exception:
-                failures.append(b.name)
-                _LOGGER.warning("Could not send zero power to battery %s", b.name)
+            for entity in b.command_entities:
+                try:
+                    await self._write(replace(b, command_entity=entity), 0)
+                except Exception:
+                    failures.append(entity)
+                    _LOGGER.warning("Could not send zero power to battery command %s", entity)
         self._stop_pending = bool(failures)
         if failures:
             self.fault = "stop_failed: " + ", ".join(failures)
@@ -160,8 +220,10 @@ class PoolRuntime:
                 return
             now = dt_util.utcnow()
             readings = {}
+            effective_batteries = self.batteries
             error = None
             try:
+                effective_batteries = self._effective_batteries(now)
                 for b in self.batteries:
                     soc, soc_at = self._read(b.soc_entity, "%", now)
                     power, power_at = self._read(b.power_entity, "W", now)
@@ -187,6 +249,7 @@ class PoolRuntime:
                 else:
                     reason = "target_expired"
             if self.controller:
+                self.controller.config = replace(self.controller.config, batteries=effective_batteries)
                 plan = self.controller.plan(readings, request if not error and not self.fault else 0, now)
                 self.soc = plan.pool_soc
                 self.outputs = {c.battery: c.power_w * (-1 if c.direction == Direction.CHARGE else 1) for c in plan.commands}
@@ -209,27 +272,20 @@ class PoolRuntime:
                 else:
                     try:
                         self._validate_adapters()
-                        # First reduce every existing command to zero before any increase or reversal.
-                        # All writes are serialized and all adapters receive a heartbeat every tick.
-                        targets = {}
-                        for b in self.batteries:
-                            value = self.outputs.get(b.name, 0) * (1 if b.positive_discharge else -1)
-                            state = self.hass.states.get(b.command_entity)
-                            step = float(state.attributes.get("step", 1))
-                            if not math.isfinite(step) or step <= 0:
-                                raise ValueError(f"Invalid command step: {b.name}")
-                            # Zero must be supported exactly; integer multiples are rounded toward zero.
-                            minimum = float(state.attributes['min'])
-                            if abs(minimum / step - round(minimum / step)) > 1e-6:
-                                raise ValueError(f"Command step cannot represent zero: {b.name}")
-                            targets[b.name] = math.trunc(value / step) * step
-                        for b in self.batteries:
-                            current = float(self.hass.states.get(b.command_entity).state)
-                            target = targets[b.name]
+                        targets = self._command_targets()
+                        # Stop/reduce old commands across the entire pool before any increase.
+                        for endpoint, target in targets:
+                            current = float(self.hass.states.get(endpoint.command_entity).state)
                             if current != 0 and (current * target <= 0 or abs(target) < abs(current)):
-                                await self._write(b, 0)
-                        for b in self.batteries:
-                            await self._write(b, targets[b.name])
+                                await self._write(endpoint, 0)
+                        # Explicitly zero every inactive endpoint first, even if its reported
+                        # state is already zero. This interlocks separate charge/discharge controls.
+                        for endpoint, target in targets:
+                            if target == 0:
+                                await self._write(endpoint, 0)
+                        for endpoint, target in targets:
+                            if target != 0:
+                                await self._write(endpoint, target)
                     except Exception as err:
                         self.fault = str(err)
                         await self._stop_outputs()
@@ -237,6 +293,7 @@ class PoolRuntime:
                 self.status = "fault"
                 self.planned = 0
                 self.outputs = {b.name: 0 for b in self.batteries}
+            self.input_error = error
             self.notify()
 
     async def shutdown(self):

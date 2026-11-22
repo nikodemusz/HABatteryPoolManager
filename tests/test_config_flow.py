@@ -12,7 +12,7 @@ from custom_components.virtual_battery_pool.config_flow import BatteryPoolOption
 
 def values(**overrides):
     return battery_schema()({
-        'name': 'Garage', 'soc_entity': 'sensor.soc',
+        'command_mode': 'signed', 'name': 'Garage', 'soc_entity': 'sensor.soc',
         'power_entity': 'sensor.power', 'command_entity': 'number.command',
         **overrides,
     })
@@ -180,3 +180,73 @@ async def test_invalid_grid_target_returns_serializable_error(context, invalid):
     assert result['errors']['grid_target_w'] == 'invalid_number'
     api_payload(result)
     assert entry.options == {}
+
+
+
+@pytest.mark.asyncio
+async def test_separate_controls_and_read_only_limits_round_trip(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    data = values(command_mode='separate', charge_command_entity='number.command', discharge_command_entity='input_number.command', max_charge_entity='sensor.soc', max_discharge_entity='sensor.power')
+    # The inactive signed field is discarded rather than mistaken for a third command.
+    result = await flow.async_step_add_battery(data)
+    battery = result['data']['batteries'][0]
+    assert battery['command_mode'] == 'separate'
+    assert 'command_entity' not in battery and 'command_service' not in battery
+    entry.options = result['data']
+    flow = new_flow()
+    await flow.async_step_init()
+    edit = api_payload(await flow.async_step_edit_battery({'battery': battery['id']}))
+    defaults = {f['name']: f.get('default', f.get('description', {}).get('suggested_value')) for f in edit['data_schema']}
+    assert defaults['command_mode'] == 'separate'
+    assert defaults['charge_command_entity'] == 'number.command'
+    assert defaults['max_discharge_entity'] == 'sensor.power'
+
+
+@pytest.mark.asyncio
+async def test_separate_controls_are_required_distinct_and_not_limits(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    result = await flow.async_step_add_battery(values(command_mode='separate'))
+    assert result['errors']['charge_command_entity'] == 'command_required'
+    assert result['errors']['discharge_command_entity'] == 'command_required'
+    api_payload(result)
+    data = values(command_mode='separate', charge_command_entity='number.command', discharge_command_entity='number.command')
+    assert (await flow.async_step_add_battery(data))['errors']['discharge_command_entity'] == 'duplicate_command'
+    data.update(discharge_command_entity='input_number.command', max_charge_entity='number.command')
+    result = await flow.async_step_add_battery(data)
+    assert result['errors']['max_charge_entity'] == 'duplicate_command'
+    assert entry.options == {}
+
+
+@pytest.mark.asyncio
+async def test_old_signed_mapping_keeps_signed_mode(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    result = await flow.async_step_add_battery(values())
+    entry.options = result['data']
+    entry.options['batteries'][0].pop('command_mode')
+    flow = new_flow()
+    await flow.async_step_init()
+    result = api_payload(await flow.async_step_edit_battery({'battery': entry.options['batteries'][0]['id']}))
+    assert next(f for f in result['data_schema'] if f['name'] == 'command_mode')['default'] == 'signed'
+
+
+
+@pytest.mark.asyncio
+async def test_optional_maximum_entity_can_be_cleared_when_editing(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    entry.options = (await flow.async_step_add_battery(values(max_charge_entity='sensor.power')))['data']
+    battery = entry.options['batteries'][0]
+    flow = new_flow()
+    await flow.async_step_init()
+    result = await flow.async_step_edit_battery({'battery': battery['id']})
+    submitted = result['data_schema'](values())
+    assert 'max_charge_entity' not in submitted
+    result = await flow.async_step_battery(submitted)
+    assert 'max_charge_entity' not in result['data']['batteries'][0]

@@ -212,7 +212,7 @@ async def test_inverted_adapter_sign_and_step_rounds_toward_zero(rig):
     rig.calls.clear()
     rig.clock.now += timedelta(seconds=5)
     await r.set_target(500)
-    assert rig.calls == [('number.a', -20), ('number.b', 0)]
+    assert rig.calls == [('number.b', 0), ('number.a', -20)]
     assert r.planned == 25
 
 
@@ -236,3 +236,150 @@ async def test_failed_stop_retries_after_switch_off(rig, monkeypatch):
     await r.update()
     assert rig.calls == [('number.a', 0), ('number.b', 0)]
     assert not r._stop_pending
+
+
+
+def separate_adapter(rig, **changes):
+    rig.attrs.update(min=0)
+    b = replace(rig.runtime.batteries[0], command_mode='separate', command_entity='', command_service='',
+                charge_command_entity='number.charge', discharge_command_entity='number.discharge',
+                max_charge_entity='number.charge_limit', max_discharge_entity='number.discharge_limit', **changes)
+    for entity, value in [('number.charge', 0), ('number.discharge', 0), ('number.charge_limit', 120), ('number.discharge_limit', 80)]:
+        rig.hass.states.async_set(entity, str(value), rig.attrs)
+    rig.runtime.batteries = (b,)
+    rig.entry.options['batteries'] = [asdict(b)]
+    return b
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('requested_power', 'active', 'limit'), [(-1000, 'number.charge', 120), (1000, 'number.discharge', 80)])
+async def test_separate_setpoints_respect_independent_limits_without_writing_them(rig, requested_power, active, limit):
+    separate_adapter(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.calls.clear()
+    for _ in range(8):
+        rig.clock.now += timedelta(seconds=5)
+        await r.set_target(requested_power)
+    assert abs(r.planned) == limit
+    assert all(entity in ('number.charge', 'number.discharge') for entity, _ in rig.calls)
+    assert all(0 <= value <= limit for _, value in rig.calls)
+    assert any(entity == active and value == limit for entity, value in rig.calls)
+    assert rig.hass.states.get('number.charge_limit').state == '120'
+    assert rig.hass.states.get('number.discharge_limit').state == '80'
+    state = {'number.charge': 0, 'number.discharge': 0}
+    for entity, value in rig.calls:
+        state[entity] = value
+        assert not all(v > 0 for v in state.values())
+    await r.set_enabled(False)
+    assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]
+
+
+@pytest.mark.asyncio
+async def test_separate_direction_switch_zeroes_other_endpoint_first(rig):
+    separate_adapter(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-1000)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(1000)
+    assert r.planned == 0 and r.status == 'direction_reversal_guard'
+    rig.clock.now += timedelta(seconds=30)
+    rig.calls.clear()
+    await r.update()
+    assert rig.calls == [('number.charge', 0), ('number.discharge', 25)]
+
+
+@pytest.mark.asyncio
+async def test_limit_zero_disables_only_its_direction_and_changes_take_effect(rig):
+    separate_adapter(rig)
+    live(rig)
+    r = rig.runtime
+    rig.hass.states.async_set('number.charge_limit', '0', rig.attrs)
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-1000)
+    assert r.planned == 0
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(1000)
+    assert r.planned == 25
+    rig.hass.states.async_set('number.discharge_limit', '10', rig.attrs)
+    rig.clock.now += timedelta(seconds=5)
+    await r.update()
+    assert r.planned == 10
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('value', ['unavailable', 'nan', '-10'])
+async def test_invalid_limit_stops_both_setpoints(rig, value):
+    separate_adapter(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(1000)
+    rig.hass.states.async_set('number.discharge_limit', value, rig.attrs)
+    await r.update()
+    assert r.status == 'invalid_readings' and r.planned == 0
+    assert r.input_error
+    assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]
+
+
+@pytest.mark.asyncio
+async def test_unitless_controls_need_explicit_watt_confirmation(rig):
+    separate_adapter(rig)
+    live(rig)
+    r = rig.runtime
+    rig.attrs.pop('unit_of_measurement')
+    for entity in ('number.charge', 'number.discharge', 'number.charge_limit', 'number.discharge_limit'):
+        old = rig.hass.states.get(entity)
+        rig.hass.states.async_set(entity, old.state, rig.attrs)
+    with pytest.raises(ValueError, match='not in W'):
+        await r.set_enabled(True)
+    assert rig.calls == []
+    r.batteries = tuple(replace(b, power_unit_w_confirmed=True) for b in r.batteries)
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(1000)
+    assert r.planned == 25
+    rig.hass.states.async_set('number.charge', '0', {**rig.attrs, 'unit_of_measurement': 'A'})
+    with pytest.raises(ValueError, match='not in W'):
+        await r.set_enabled(True)
+
+
+@pytest.mark.asyncio
+async def test_separate_write_failure_stops_both_without_touching_limits(rig):
+    separate_adapter(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.fail.add('number.discharge')
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(1000)
+    assert r.fault
+    assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]
+    assert all(entity not in ('number.charge_limit', 'number.discharge_limit') for entity, _ in rig.calls)
+
+
+@pytest.mark.asyncio
+async def test_limit_command_overlap_blocks_live_activation(rig):
+    b = separate_adapter(rig)
+    live(rig)
+    rig.runtime.batteries = (replace(b, max_charge_entity=b.charge_command_entity),)
+    with pytest.raises(ValueError, match='overlap'):
+        await rig.runtime.set_enabled(True)
+    assert rig.calls == []
+
+
+@pytest.mark.asyncio
+async def test_persistent_number_limits_do_not_expire_but_dynamic_sensor_limits_do(rig):
+    b = separate_adapter(rig)
+    rig.clock.now += timedelta(seconds=70)
+    assert rig.runtime._effective_batteries(rig.clock.now)[0].max_discharge_w == 80
+    rig.hass.states.async_set('sensor.dynamic_limit', '80', {'unit_of_measurement': 'W'})
+    rig.runtime.batteries = (replace(b, max_discharge_entity='sensor.dynamic_limit'),)
+    with pytest.raises(ValueError, match='stale'):
+        rig.runtime._effective_batteries(rig.clock.now)

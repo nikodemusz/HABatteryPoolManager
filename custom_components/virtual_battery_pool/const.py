@@ -19,14 +19,31 @@ class BatteryConfig:
     capacity_kwh: float
     soc_entity: str
     power_entity: str
-    command_entity: str
-    command_service: str
+    command_entity: str = ""
+    command_service: str = ""
     min_soc: float = 20.0
     max_soc: float = 80.0
     max_charge_w: float = 300.0
     max_discharge_w: float = 300.0
     positive_discharge: bool = True
     adapter_confirmed: bool = False
+    command_mode: str = "signed"
+    charge_command_entity: str = ""
+    discharge_command_entity: str = ""
+    max_charge_entity: str = ""
+    max_discharge_entity: str = ""
+    power_unit_w_confirmed: bool = False
+
+    @property
+    def command_entities(self):
+        if self.command_mode == "separate":
+            return (self.charge_command_entity, self.discharge_command_entity)
+        return (self.command_entity,)
+
+    @property
+    def limit_entities(self):
+        return tuple(e for e in (self.max_charge_entity, self.max_discharge_entity) if e)
+
 
 
 @dataclass(frozen=True, slots=True)

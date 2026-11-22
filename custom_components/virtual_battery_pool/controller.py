@@ -85,7 +85,7 @@ class PoolController:
                 and len({b.name for b in c.batteries}) == len(c.batteries)
                 and all(all(math.isfinite(v) for v in (b.capacity_kwh, b.min_soc, b.max_soc, b.max_charge_w, b.max_discharge_w))
                         and b.capacity_kwh > 0 and 0 <= b.min_soc < b.max_soc <= 100
-                        and b.max_charge_w > 0 and b.max_discharge_w > 0 for b in c.batteries))
+                        and b.max_charge_w >= 0 and b.max_discharge_w >= 0 for b in c.batteries))
 
     def _readings_safe(self, readings, now):
         for battery in self.config.batteries:

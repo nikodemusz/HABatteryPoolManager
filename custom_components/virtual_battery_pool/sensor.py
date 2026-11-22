@@ -32,6 +32,6 @@ class PoolSensor(PoolEntity, SensorEntity):
     def extra_state_attributes(self):
         if self.key == "status":
             return {"simulation": not self.runtime.live, "mode": self.runtime.mode,
-                    "fault": self.runtime.fault, "battery_plan_w": self.runtime.outputs,
+                    "fault": self.runtime.fault, "input_error": self.runtime.input_error, "battery_plan_w": self.runtime.outputs,
                     "target_timeout_seconds": 60}
         return None
