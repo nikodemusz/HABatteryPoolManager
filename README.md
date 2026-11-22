@@ -1,6 +1,6 @@
 # Virtual Battery Pool
 
-A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.3 adds separate charging/discharging requests and optional read-only device maxima, alongside signed-watt adapters, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2. Version 0.2.1 fixes setup forms failing to render by using native number selectors and validating finite values on submission.
+A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.4 adds configurable charge/discharge/idle mode control alongside separate power requests, read-only device maxima, signed-watt adapters, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2. Version 0.2.1 fixes setup forms failing to render by using native number selectors and validating finite values on submission.
 
 ## Supported battery adapters
 
@@ -9,13 +9,14 @@ Each battery must expose:
 - A current SOC sensor in **%**, from 0 to 100.
 - A measured AC power sensor in **W**.
 - Either **two separate writable request entities** in W (one for current charging power and one for current discharging power, both nonnegative, with zero stopping that direction), or **one signed writable request entity** in W (positive/negative directions, zero to stop). Supported domains are `number` and `input_number`.
+- If direction additionally depends on a device mode, a **select or input_select** with distinct charge, discharge and idle options. Map the actual option values explicitly in the editor.
 - Optionally, **two independent maximum-power entities**: maximum charging power and maximum discharging power. These may be `number`, `input_number`, or `sensor`; the integration only reads them.
 
 The editor normalizes the measured AC power convention: positive = discharge (default) or positive = charge. A combined signed request must use that same convention. Separate charge/discharge requests are always positive magnitudes and do not use a command sign. Different batteries may use different adapter types and measurement conventions. The pool entities always use **positive = discharge, negative = charge**.
 
-The device must already be in the appropriate remote-control mode and have a **device-side command watchdog** that stops power when commands cease. The integration refreshes every 5 seconds; configure a watchdog appropriate to the device (typically 15–30 seconds, allowing for its communication interval). Verify the actual device behavior before confirming the adapter contract. A plain `input_number` needs a separate device bridge and watchdog; storing a helper value alone does not control hardware.
+The device must already have its general remote-control prerequisites enabled and have a **device-side command watchdog** that stops power when commands cease. The integration refreshes every 5 seconds; configure a watchdog appropriate to the device (typically 15–30 seconds, allowing for its communication interval). Verify the actual device behavior before confirming the adapter contract. A plain `input_number` needs a separate device bridge and watchdog; storing a helper value alone does not control hardware.
 
-Unsigned maximum-power limiters alone cannot request charging or discharging. Mode selectors, current limits in amperes, and vendor APIs still need an adapter outside this integration. No vendor protocol drivers are included. All pool batteries must be connected behind the same grid meter when using self-consumption mode. Do not let another controller write to the same battery simultaneously.
+Unsigned maximum-power limiters alone cannot request charging or discharging. Direction mode selectors are supported through select.select_option or input_select.select_option. General operating-mode switches, remote-control unlocks, current limits in amperes and vendor APIs still need separate preparation or an adapter. No vendor protocol drivers are included. All pool batteries must be connected behind the same grid meter when using self-consumption mode. Do not let another controller write to the same battery simultaneously.
 
 ## Installation and first use
 
@@ -26,12 +27,13 @@ Unsigned maximum-power limiters alone cannot request charging or discharging. Mo
    - Optionally assign **Device maximum charging power** and **Device maximum discharging power**, e.g. “Maximum charging power” / “Maximum discharging power”. These are **not** current requests and are **never written**, including when stopping.
    - Keep the additional pool software limits at 300 W initially. Each direction uses the lower of its software limit and linked device maximum. A device maximum of zero disables only that direction.
    - If these controls are documented as watts but Home Assistant supplies no unit, explicitly confirm **Controls without a displayed unit use watts**. This accepts missing units only on the selected request/maximum entities; A, kW and % are rejected. SOC and AC measurement sensors still need % and W respectively.
-4. Repeat for other batteries. Command entities cannot be assigned twice, including across pools.
+   - If charging/discharging also requires a mode, select **Charge / discharge / idle mode entity**, e.g. the device's **Forced mode**. The next form lists that entity's actual options. Map charge → `charge`, discharge → `discharge`, idle → `standby` for an adapter exposing those values. There are no guessed mappings for other devices. A general **User mode** (`manual` / `anti_feed` / `trade_mode`) is a different prerequisite, not a substitute for direction control. Choose a real idle state, not an autonomous mode that can independently transfer power.
+4. Repeat for other batteries. Power and direction-mode entities cannot be assigned twice, including across pools.
 5. Open **Control mode and live output**. Leave live output **off** for simulation. Choose external request or grid self-consumption.
-6. Open the pool device and turn on **Pool control**. Inspect **Control status**, **Pool state of charge**, **Measured AC power**, and **Planned AC power**. Status attributes show the plan per battery, selected mode, simulation flag, any input validation error (`input_error`), and any latched fault. Simulation sends **no device commands**, including stop commands.
+6. Open the pool device and turn on **Pool control**. Inspect **Control status**, **Pool state of charge**, **Measured AC power**, and **Planned AC power**. Status attributes show the plan per battery, selected mode, simulation flag, any input validation error (`input_error`), and any latched fault. Simulation sends **no device commands**, including stop commands and mode selections.
 7. After verifying each adapter's sign, zero behavior, remote mode, and watchdog on the actual device, confirm its adapter contract in the battery editor and enable **live output** in the pool settings. This reloads the integration and leaves the pool **off**. Turn on its switch to start. Activation rejects missing services, unavailable command entities, incompatible units/ranges, and live collisions with another pool.
 
-**Pool control is off after every restart or options change.** A previous power request is never restored. Existing combined signed mappings remain in signed mode; new batteries default to separate requests. Existing battery mappings remain intact; existing SOC/power limits are preserved rather than silently overwritten. Existing adapters need to be edited and confirmed before live output is possible. Review older 0–100 % or 800 W settings if you want the new conservative defaults.
+**Pool control is off after every restart or options change.** A previous power request is never restored. Existing combined signed mappings remain in signed mode; new batteries default to separate requests. Existing adapters without a mapped mode continue to leave device modes untouched; edit them to add mode control where required. Existing battery mappings remain intact; existing SOC/power limits are preserved rather than silently overwritten. Existing adapters need to be edited and confirmed before live output is possible. Review older 0–100 % or 800 W settings if you want the new conservative defaults.
 
 ## Operating modes
 
@@ -71,9 +73,11 @@ These defaults reduce routine depth of discharge and power stress; they cannot s
 - Invalid/unknown/unavailable/stale sensor data or expired requests produce a zero plan. Normal operation can resume once fresh valid input returns.
 - Before each live write, the integration checks service availability, command units, signed limits, and step alignment. Values are rounded toward zero so device step sizes do not exceed the planned magnitude.
 - Reductions and reversals are sent before increases. In separate mode every inactive direction receives an explicit zero before any nonzero request is sent, even if its reported value is already zero. Stopping attempts zero on **both** request entities. Calls are serialized and individually limited to 5 seconds.
+- When a mapped device mode must change, its power requests are zeroed first. The integration selects the requested direction/idle mode and waits up to 5 seconds for service completion and matching Home Assistant entity readback before sending any nonzero request. Mode selection uses the **rounded actual request**: if the step size rounds a request to zero, the device stays in idle. During the reversal guard the device stays in the configured idle mode.
+- Stopping also attempts the configured idle mode after zeroing the requests, including if a zero write failed. An idle-mode failure remains latched and is retried. No prior automatic/user mode is restored; the configured idle option is the explicit release behavior.
 - A write failure latches **fault**, attempts zero for **every** confirmed adapter even if one fails, and blocks further nonzero commands. Zero retries continue while running, including after switching off if an earlier stop failed. Fix the cause, switch off, and reactivate to reset the fault.
 - Switching off, reloading/unloading, and a normal Home Assistant shutdown attempt zero on all confirmed adapters that were active. A failed stop remains visible in the fault attribute.
-- Service success is not proof of physical power reaching zero. A power/network failure, a hung device, or abrupt process termination can prevent software stop commands. The required **device-side watchdog** handles this case. The integration does not configure the watchdog or switch vendor operating modes for you.
+- Service success is not proof of physical power reaching zero. A power/network failure, a hung device, or abrupt process termination can prevent software stop commands. The required **device-side watchdog** handles this case. The integration does not configure the watchdog or general vendor operating/remote-control prerequisites for you. Mode readback confirms Home Assistant state, not physical battery behavior.
 
 ## Development and validation
 
@@ -83,7 +87,7 @@ Use Python 3.14 and `python -m pip install -r requirements-dev.txt`, then run:
 python -m pytest -q -o asyncio_default_fixture_loop_scope=function
 ```
 
-Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, HTTP form serialization, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, separate endpoint interlocking, independent read-only device limits, missing-unit confirmation, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
+Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, HTTP form serialization, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, separate endpoint interlocking, independent read-only device limits, mapped mode sequencing/readback/failure handling, missing-unit confirmation, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
 
 ## References and license
 

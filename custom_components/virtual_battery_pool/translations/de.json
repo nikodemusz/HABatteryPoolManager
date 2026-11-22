@@ -50,7 +50,8 @@
           "discharge_command_entity": "Jetzt angeforderte Entladeleistung – Sollwert-Regler (W)",
           "max_charge_entity": "Maximale Ladeleistung am Gerät – nur lesen (optional)",
           "max_discharge_entity": "Maximale Entladeleistung am Gerät – nur lesen (optional)",
-          "power_unit_w_confirmed": "Regler ohne angezeigte Einheit verwenden Watt"
+          "power_unit_w_confirmed": "Regler ohne angezeigte Einheit verwenden Watt",
+          "mode_entity": "Modus-Regler für Laden / Entladen / Stillstand (optional)"
         },
         "data_description": {
           "name": "Frei wählbarer, innerhalb dieses Pools eindeutiger Name, z. B. „Speicher Garage“. Gemeint ist ein einzelnes Batteriesystem, nicht der gesamte Pool.",
@@ -63,13 +64,14 @@
           "max_charge_w": "Zusätzliche Softwaregrenze pro Speicher; Standard 300 W, größer als 0. Der aktuelle Lade-Sollwert wird höchstens so hoch wie diese Grenze UND der optional verknüpfte maximale Ladewert am Gerät. Hier keinen Sollwert-Regler auswählen und keinen momentanen Ladebefehl eingeben.",
           "max_discharge_w": "Zusätzliche Softwaregrenze pro Speicher; Standard 300 W, größer als 0. Der aktuelle Entlade-Sollwert wird höchstens so hoch wie diese Grenze UND der optional verknüpfte maximale Entladewert am Gerät. Hier keinen Sollwert-Regler auswählen und keinen momentanen Entladebefehl eingeben.",
           "positive_discharge": "Vorzeichen des gemessenen AC-Leistungssensors: eingeschaltet = positiv entladen, negativ laden; ausgeschaltet = umgekehrt. Beim gemeinsamen Sollwert muss auch dessen Vorzeichen so funktionieren. Getrennte Lade- und Entlade-Sollwerte sind immer positive Beträge.",
-          "adapter_confirmed": "Bestätigen, dass die ausgewählten Regler aktuelle Leistungsanforderungen steuern, der richtige Fernsteuerungsmodus aktiv ist und ein geräteseitiger Watchdog bei ausbleibenden Befehlen stoppt. Getrennte Sollwerte müssen mit 0 beide Richtungen stoppen; der gemeinsame Regler muss mit 0 stoppen und beide Vorzeichen unterstützen. Ein input_number benötigt eine echte Geräteanbindung. Maximal-Regler allein reichen nicht aus.",
+          "adapter_confirmed": "Bestätigen, dass die ausgewählten Regler aktuelle Leistungsanforderungen steuern, der richtige Fernsteuerungsmodus aktiv ist und ein geräteseitiger Watchdog bei ausbleibenden Befehlen stoppt. Getrennte Sollwerte müssen mit 0 beide Richtungen stoppen; der gemeinsame Regler muss mit 0 stoppen und beide Vorzeichen unterstützen. Ein input_number benötigt eine echte Geräteanbindung. Maximal-Regler allein reichen nicht aus. Falls ein Modus-Regler zugeordnet ist, müssen dessen drei Optionen die richtigen Richtungen bzw. einen wirklichen Stillstand bewirken. Allgemeine Fernsteuerungs-Freigaben müssen bereits korrekt eingerichtet sein.",
           "command_mode": "Getrennte Sollwerte: je ein Regler für die jetzt geforderte Lade- und Entladeleistung, jeweils als positive Watt-Zahl. Dies passt zu Geräten mit vier Reglern (zwei Sollwerte und zwei Maximalwerte). Mit Vorzeichen: ein gemeinsamer Regler für beide Richtungen. Nur die zum gewählten Modus gehörenden Sollwert-Felder werden verwendet.",
           "charge_command_entity": "Im Modus „Getrennte Lade-/Entlade-Sollwerte“ den Regler auswählen, der die JETZT geforderte Ladeleistung vorgibt, z. B. „Ladeleistung einstellen“. Positive Werte laden; 0 beendet die Ladeanforderung. Nicht „Maximale Ladeleistung“ auswählen. Vor jedem Ladebefehl wird die Entladeanforderung auf 0 gesetzt.",
           "discharge_command_entity": "Im Modus „Getrennte Lade-/Entlade-Sollwerte“ den Regler auswählen, der die JETZT geforderte Entladeleistung vorgibt, z. B. „Entladeleistung einstellen“. Positive Werte entladen; 0 beendet die Entladeanforderung. Nicht „Maximale Entladeleistung“ auswählen. Vor jedem Entladebefehl wird die Ladeanforderung auf 0 gesetzt.",
           "max_charge_entity": "Optional den separaten Regler oder Sensor „Maximale Ladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Ladebefehl. Ein Wert von 0 sperrt Laden; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
           "max_discharge_entity": "Optional den separaten Regler oder Sensor „Maximale Entladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Entladebefehl. Ein Wert von 0 sperrt Entladen; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
-          "power_unit_w_confirmed": "Nur bestätigen, wenn laut Gerätebeschreibung die gewählten Sollwert- und Maximal-Regler tatsächlich Watt verwenden, Home Assistant aber keine Einheit anzeigt. Dann sind fehlende Einheiten bei diesen Reglern erlaubt. A, kW oder % werden nicht umgerechnet und bleiben unzulässig. Die Messsensoren benötigen weiterhin die korrekten Einheiten."
+          "power_unit_w_confirmed": "Nur bestätigen, wenn laut Gerätebeschreibung die gewählten Sollwert- und Maximal-Regler tatsächlich Watt verwenden, Home Assistant aber keine Einheit anzeigt. Dann sind fehlende Einheiten bei diesen Reglern erlaubt. A, kW oder % werden nicht umgerechnet und bleiben unzulässig. Die Messsensoren benötigen weiterhin die korrekten Einheiten.",
+          "mode_entity": "Falls das Gerät die Leistungsrichtung zusätzlich über einen Modus vorgibt, dessen select- oder input_select-Entity auswählen, z. B. „Erzwungener Modus“. Im nächsten Schritt die vorhandenen Optionen für Laden, Entladen und Stillstand zuordnen. Nicht den allgemeinen Benutzer-Modus mit manueller, automatischer oder Handels-Betriebsart verwenden. Ohne Auswahl bleiben Geräte-Modi unverändert."
         }
       },
       "battery": {
@@ -92,7 +94,8 @@
           "discharge_command_entity": "Jetzt angeforderte Entladeleistung – Sollwert-Regler (W)",
           "max_charge_entity": "Maximale Ladeleistung am Gerät – nur lesen (optional)",
           "max_discharge_entity": "Maximale Entladeleistung am Gerät – nur lesen (optional)",
-          "power_unit_w_confirmed": "Regler ohne angezeigte Einheit verwenden Watt"
+          "power_unit_w_confirmed": "Regler ohne angezeigte Einheit verwenden Watt",
+          "mode_entity": "Modus-Regler für Laden / Entladen / Stillstand (optional)"
         },
         "data_description": {
           "name": "Frei wählbarer, innerhalb dieses Pools eindeutiger Name, z. B. „Speicher Garage“. Gemeint ist ein einzelnes Batteriesystem, nicht der gesamte Pool.",
@@ -105,13 +108,14 @@
           "max_charge_w": "Zusätzliche Softwaregrenze pro Speicher; Standard 300 W, größer als 0. Der aktuelle Lade-Sollwert wird höchstens so hoch wie diese Grenze UND der optional verknüpfte maximale Ladewert am Gerät. Hier keinen Sollwert-Regler auswählen und keinen momentanen Ladebefehl eingeben.",
           "max_discharge_w": "Zusätzliche Softwaregrenze pro Speicher; Standard 300 W, größer als 0. Der aktuelle Entlade-Sollwert wird höchstens so hoch wie diese Grenze UND der optional verknüpfte maximale Entladewert am Gerät. Hier keinen Sollwert-Regler auswählen und keinen momentanen Entladebefehl eingeben.",
           "positive_discharge": "Vorzeichen des gemessenen AC-Leistungssensors: eingeschaltet = positiv entladen, negativ laden; ausgeschaltet = umgekehrt. Beim gemeinsamen Sollwert muss auch dessen Vorzeichen so funktionieren. Getrennte Lade- und Entlade-Sollwerte sind immer positive Beträge.",
-          "adapter_confirmed": "Bestätigen, dass die ausgewählten Regler aktuelle Leistungsanforderungen steuern, der richtige Fernsteuerungsmodus aktiv ist und ein geräteseitiger Watchdog bei ausbleibenden Befehlen stoppt. Getrennte Sollwerte müssen mit 0 beide Richtungen stoppen; der gemeinsame Regler muss mit 0 stoppen und beide Vorzeichen unterstützen. Ein input_number benötigt eine echte Geräteanbindung. Maximal-Regler allein reichen nicht aus.",
+          "adapter_confirmed": "Bestätigen, dass die ausgewählten Regler aktuelle Leistungsanforderungen steuern, der richtige Fernsteuerungsmodus aktiv ist und ein geräteseitiger Watchdog bei ausbleibenden Befehlen stoppt. Getrennte Sollwerte müssen mit 0 beide Richtungen stoppen; der gemeinsame Regler muss mit 0 stoppen und beide Vorzeichen unterstützen. Ein input_number benötigt eine echte Geräteanbindung. Maximal-Regler allein reichen nicht aus. Falls ein Modus-Regler zugeordnet ist, müssen dessen drei Optionen die richtigen Richtungen bzw. einen wirklichen Stillstand bewirken. Allgemeine Fernsteuerungs-Freigaben müssen bereits korrekt eingerichtet sein.",
           "command_mode": "Getrennte Sollwerte: je ein Regler für die jetzt geforderte Lade- und Entladeleistung, jeweils als positive Watt-Zahl. Dies passt zu Geräten mit vier Reglern (zwei Sollwerte und zwei Maximalwerte). Mit Vorzeichen: ein gemeinsamer Regler für beide Richtungen. Nur die zum gewählten Modus gehörenden Sollwert-Felder werden verwendet.",
           "charge_command_entity": "Im Modus „Getrennte Lade-/Entlade-Sollwerte“ den Regler auswählen, der die JETZT geforderte Ladeleistung vorgibt, z. B. „Ladeleistung einstellen“. Positive Werte laden; 0 beendet die Ladeanforderung. Nicht „Maximale Ladeleistung“ auswählen. Vor jedem Ladebefehl wird die Entladeanforderung auf 0 gesetzt.",
           "discharge_command_entity": "Im Modus „Getrennte Lade-/Entlade-Sollwerte“ den Regler auswählen, der die JETZT geforderte Entladeleistung vorgibt, z. B. „Entladeleistung einstellen“. Positive Werte entladen; 0 beendet die Entladeanforderung. Nicht „Maximale Entladeleistung“ auswählen. Vor jedem Entladebefehl wird die Ladeanforderung auf 0 gesetzt.",
           "max_charge_entity": "Optional den separaten Regler oder Sensor „Maximale Ladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Ladebefehl. Ein Wert von 0 sperrt Laden; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
           "max_discharge_entity": "Optional den separaten Regler oder Sensor „Maximale Entladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Entladebefehl. Ein Wert von 0 sperrt Entladen; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
-          "power_unit_w_confirmed": "Nur bestätigen, wenn laut Gerätebeschreibung die gewählten Sollwert- und Maximal-Regler tatsächlich Watt verwenden, Home Assistant aber keine Einheit anzeigt. Dann sind fehlende Einheiten bei diesen Reglern erlaubt. A, kW oder % werden nicht umgerechnet und bleiben unzulässig. Die Messsensoren benötigen weiterhin die korrekten Einheiten."
+          "power_unit_w_confirmed": "Nur bestätigen, wenn laut Gerätebeschreibung die gewählten Sollwert- und Maximal-Regler tatsächlich Watt verwenden, Home Assistant aber keine Einheit anzeigt. Dann sind fehlende Einheiten bei diesen Reglern erlaubt. A, kW oder % werden nicht umgerechnet und bleiben unzulässig. Die Messsensoren benötigen weiterhin die korrekten Einheiten.",
+          "mode_entity": "Falls das Gerät die Leistungsrichtung zusätzlich über einen Modus vorgibt, dessen select- oder input_select-Entity auswählen, z. B. „Erzwungener Modus“. Im nächsten Schritt die vorhandenen Optionen für Laden, Entladen und Stillstand zuordnen. Nicht den allgemeinen Benutzer-Modus mit manueller, automatischer oder Handels-Betriebsart verwenden. Ohne Auswahl bleiben Geräte-Modi unverändert."
         }
       },
       "edit_battery": {
@@ -151,6 +155,20 @@
           "grid_confirmed": "Nur für Eigenverbrauch bestätigen: am Netzanschluss erzeugt Bezug positive und Einspeisung negative Werte in W. Eine falsche Richtung kann die Regelung verstärken statt ausgleichen. Die Batteriesensoren müssen dieselbe AC-Seite dieses Netzanschlusses messen.",
           "grid_target_w": "Standard 20 W verbleibender Netzbezug statt exakter Nulleinspeisung. Ein kleiner positiver Puffer reduziert Pendeln um 0. Wird nur im Eigenverbrauchsmodus verwendet."
         }
+      },
+      "battery_modes": {
+        "title": "Geräte-Modi zuordnen",
+        "description": "Für {entity} die tatsächlichen Optionen für Laden, Entladen und Stillstand auswählen. Vor einem Moduswechsel werden die Leistungs-Sollwerte auf 0 gesetzt. Erst nach Bestätigung des neuen Modus in Home Assistant wird Leistung angefordert. Beim Stoppen wird der Stillstandsmodus gewählt.",
+        "data": {
+          "charge_mode": "Modus für Laden",
+          "discharge_mode": "Modus für Entladen",
+          "idle_mode": "Modus für Stillstand / Stopp"
+        },
+        "data_description": {
+          "charge_mode": "Option, die den Ladebetrieb aktiviert, z. B. charge. Kein allgemeiner Benutzer-Modus wie manual.",
+          "discharge_mode": "Option, die den Entladebetrieb aktiviert, z. B. discharge.",
+          "idle_mode": "Option für echten Stillstand, z. B. standby. Wird bei 0 W, Fehlern, ausgeschaltetem Pool und beim Entladen der Integration angefordert. Keine Automatik wählen, die selbständig Leistung erzeugt oder aufnimmt."
+        }
       }
     },
     "error": {
@@ -159,12 +177,18 @@
       "invalid_soc_range": "Der minimale Ladezustand muss kleiner als der maximale sein.",
       "distinct_sensors": "Separate Sensoren für Ladezustand und Leistung auswählen.",
       "entity_missing": "Diese Entity existiert nicht mehr.",
-      "duplicate_command": "Sollwert-Regler müssen eindeutig sein und dürfen nicht gleichzeitig als Maximalwert verwendet werden.",
+      "duplicate_command": "Leistungs- und Modus-Regler müssen pro Batteriesystem eindeutig sein und dürfen keine Maximalwert-Entity steuern.",
       "grid_required": "Für Eigenverbrauch einen vorhandenen Netzleistungssensor in W auswählen.",
       "grid_confirmation_required": "Die Vorzeichen der Netzmessung müssen geprüft und bestätigt sein.",
       "adapters_required": "Zuerst mindestens ein Batteriesystem anlegen und bei allen die geprüfte Geräteanbindung bestätigen.",
       "invalid_number": "Bitte eine endliche Zahl innerhalb des erlaubten Wertebereichs eingeben.",
-      "command_required": "Den zum gewählten Modus gehörenden Sollwert-Regler auswählen."
+      "command_required": "Den zum gewählten Modus gehörenden Sollwert-Regler auswählen.",
+      "mode_unavailable": "Die Modus-Entity muss verfügbar sein und mindestens drei verschiedene Optionen anbieten.",
+      "mode_option_invalid": "Eine aktuell verfügbare Option der gewählten Modus-Entity auswählen.",
+      "distinct_modes": "Für Laden, Entladen und Stillstand drei verschiedene Optionen auswählen."
+    },
+    "abort": {
+      "configuration_expired": "Einrichtung abgelaufen. Konfigurieren erneut öffnen."
     }
   },
   "selector": {

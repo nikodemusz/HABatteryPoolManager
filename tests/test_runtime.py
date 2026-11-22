@@ -383,3 +383,206 @@ async def test_persistent_number_limits_do_not_expire_but_dynamic_sensor_limits_
     rig.runtime.batteries = (replace(b, max_discharge_entity='sensor.dynamic_limit'),)
     with pytest.raises(ValueError, match='stale'):
         rig.runtime._effective_batteries(rig.clock.now)
+
+
+def attach_mode(rig, domain='select'):
+    b = separate_adapter(rig)
+    entity = f'{domain}.force_mode'
+    rig.runtime.batteries = (replace(b, mode_entity=entity, charge_mode='charge', discharge_mode='discharge', idle_mode='standby'),)
+    rig.entry.options['batteries'] = [asdict(rig.runtime.batteries[0])]
+    attrs = {'options': ['standby', 'charge', 'discharge']}
+    rig.hass.states.async_set(entity, 'standby', attrs)
+    device = SimpleNamespace(events=[], reject=set(), acknowledge=True, entity=entity, attrs=attrs)
+    original = rig.runtime._write
+    async def logged_power(battery, value):
+        device.events.append(('power', battery.command_entity, value))
+        await original(battery, value)
+    rig.runtime._write = logged_power
+    async def mode(call):
+        option = call.data['option']
+        device.events.append(('mode', call.data['entity_id'], option))
+        if option in device.reject:
+            raise ValueError('Mode rejected')
+        if device.acknowledge:
+            rig.hass.states.async_set(entity, option, attrs)
+    rig.hass.services.async_register(domain, 'select_option', mode)
+    return device
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('domain', ['select', 'input_select'])
+@pytest.mark.parametrize(('power', 'option'), [(-500, 'charge'), (500, 'discharge')])
+async def test_mode_is_selected_between_zero_and_power_commands(rig, domain, power, option):
+    device = attach_mode(rig, domain)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    device.events.clear()
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(power)
+    mode_index = device.events.index(('mode', device.entity, option))
+    before = device.events[:mode_index]
+    assert ('power', 'number.charge', 0) in before
+    assert ('power', 'number.discharge', 0) in before
+    assert all(value == 0 for kind, _, value in before if kind == 'power')
+    assert any(kind == 'power' and value > 0 for kind, _, value in device.events[mode_index+1:])
+    assert not r.fault
+
+
+@pytest.mark.asyncio
+async def test_reversal_waits_in_idle_before_selecting_opposite_mode(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-500)
+    assert rig.hass.states.get(device.entity).state == 'charge'
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(500)
+    assert r.status == 'direction_reversal_guard'
+    assert rig.hass.states.get(device.entity).state == 'standby'
+    rig.clock.now += timedelta(seconds=29)
+    await r.update()
+    assert rig.hass.states.get(device.entity).state == 'standby'
+    rig.clock.now += timedelta(seconds=1)
+    await r.update()
+    assert rig.hass.states.get(device.entity).state == 'discharge'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', ['reject', 'unconfirmed'])
+async def test_failed_mode_change_never_sends_nonzero_power(rig, failure):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    if failure == 'reject':
+        device.reject.add('charge')
+    else:
+        device.acknowledge = False
+    device.events.clear()
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-500)
+    assert r.fault and r.status == 'fault'
+    assert all(value == 0 for kind, _, value in device.events if kind == 'power')
+    assert ('mode', device.entity, 'standby') in device.events
+    assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]
+
+
+@pytest.mark.asyncio
+async def test_mode_fault_stop_retries_idle_even_after_switch_off(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-500)
+    device.reject.add('standby')
+    await r.set_enabled(False)
+    assert r.fault and r._stop_pending
+    assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]
+    device.reject.clear()
+    await r.update()
+    assert not r._stop_pending
+    assert rig.hass.states.get(device.entity).state == 'standby'
+
+
+@pytest.mark.asyncio
+async def test_mode_does_not_change_in_simulation(rig):
+    device = attach_mode(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-500)
+    assert r.planned < 0
+    assert device.events == [] and rig.calls == []
+    assert rig.hass.states.get(device.entity).state == 'standby'
+
+
+@pytest.mark.asyncio
+async def test_unavailable_mode_blocks_activation_without_device_actions(rig):
+    device = attach_mode(rig)
+    live(rig)
+    rig.hass.states.async_set(device.entity, 'unavailable', device.attrs)
+    with pytest.raises(ValueError, match='Mode entity'):
+        await rig.runtime.set_enabled(True)
+    assert not rig.runtime.enabled and device.events == []
+
+
+@pytest.mark.asyncio
+async def test_quantized_zero_request_keeps_idle_mode(rig):
+    device = attach_mode(rig)
+    rig.attrs['step'] = 50
+    for entity in ('number.charge', 'number.discharge'):
+        rig.hass.states.async_set(entity, '0', rig.attrs)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-500)
+    assert r.planned == -25
+    assert rig.hass.states.get(device.entity).state == 'standby'
+    rig.clock.now += timedelta(seconds=5)
+    await r.update()
+    assert rig.hass.states.get(device.entity).state == 'charge'
+
+
+@pytest.mark.asyncio
+async def test_shutdown_requests_idle_after_zeroing_both_directions(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(500)
+    device.events.clear()
+    await r.shutdown()
+    assert device.events == [('power', 'number.charge', 0), ('power', 'number.discharge', 0), ('mode', device.entity, 'standby')]
+
+
+@pytest.mark.asyncio
+async def test_empty_timeout_exception_still_latches_a_fault(rig, monkeypatch):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    original = r._write_mode
+    async def timeout(battery, option):
+        if option == 'charge':
+            raise TimeoutError()
+        await original(battery, option)
+    monkeypatch.setattr(r, '_write_mode', timeout)
+    device.events.clear()
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-500)
+    assert r.fault == 'TimeoutError' and r.status == 'fault'
+    assert all(value == 0 for kind, _, value in device.events if kind == 'power')
+
+
+@pytest.mark.asyncio
+async def test_two_batteries_cannot_share_a_mode_selector(rig):
+    device = attach_mode(rig)
+    live(rig)
+    b = rig.runtime.batteries[0]
+    other = replace(b, name='B', command_mode='signed', command_entity='number.b', command_service='number.set_value')
+    rig.runtime.batteries = (b, other)
+    with pytest.raises(ValueError, match='Duplicate'):
+        await rig.runtime.set_enabled(True)
+    assert device.events == []
+
+
+@pytest.mark.asyncio
+async def test_failed_reactivation_stops_previous_requests_and_selects_idle(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(-500)
+    rig.hass.states.async_set(device.entity, 'unavailable', device.attrs)
+    device.events.clear()
+    with pytest.raises(ValueError, match='Mode entity'):
+        await r.set_enabled(True)
+    assert not r.enabled and r.planned == 0
+    assert device.events == [('power', 'number.charge', 0), ('power', 'number.discharge', 0), ('mode', device.entity, 'standby')]

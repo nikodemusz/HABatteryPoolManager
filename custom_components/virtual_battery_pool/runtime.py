@@ -110,19 +110,21 @@ class PoolRuntime:
     def _validate_adapters(self):
         if not self.batteries:
             raise ValueError("No batteries configured")
-        command_ids = [entity for b in self.batteries for entity in b.command_entities]
+        command_ids = [entity for b in self.batteries for entity in b.control_entities]
         limit_ids = {entity for b in self.batteries for entity in b.limit_entities}
         if len(set(command_ids)) != len(command_ids) or set(command_ids) & limit_ids:
             raise ValueError("Duplicate command entities or overlap with device limits")
         for other in self.hass.data.get(DOMAIN, {}).values():
             if other is not self and other.enabled and other.live:
-                other_commands = {entity for b in other.batteries for entity in b.command_entities}
+                other_commands = {entity for b in other.batteries for entity in b.control_entities}
                 other_limits = {entity for b in other.batteries for entity in b.limit_entities}
                 if set(command_ids) & (other_commands | other_limits) or limit_ids & other_commands:
                     raise ValueError("Command entity already controlled by another pool or used as a device limit")
         for b in self.batteries:
             if not b.adapter_confirmed:
                 raise ValueError(f"Adapter contract not confirmed: {b.name}")
+            if b.mode_entity:
+                self._mode_state(b)
             if b.command_mode == "separate":
                 self._command_state(b, b.charge_command_entity, 0, b.max_charge_w)
                 self._command_state(b, b.discharge_command_entity, 0, b.max_discharge_w)
@@ -135,6 +137,34 @@ class PoolRuntime:
                 self._command_state(b, b.command_entity, min(0, charge, discharge), max(0, charge, discharge))
             else:
                 raise ValueError(f"Unknown command mode: {b.name}")
+
+    def _mode_state(self, battery):
+        entity = battery.mode_entity
+        domain = entity.split(".")[0]
+        if domain not in ("select", "input_select") or not self.hass.services.has_service(domain, "select_option"):
+            raise ValueError(f"Mode service unavailable: {entity}")
+        state = self.hass.states.get(entity)
+        options = state.attributes.get("options", []) if state else []
+        modes = (battery.charge_mode, battery.discharge_mode, battery.idle_mode)
+        if (state is None or state.state in ("unknown", "unavailable") or not isinstance(options, list)
+                or state.state not in options or len(set(modes)) != 3 or not all(option and option in options for option in modes)):
+            raise ValueError(f"Mode entity or configured options unavailable: {entity}")
+        return state
+
+    async def _write_mode(self, battery, option):
+        domain = battery.mode_entity.split(".")[0]
+        if domain not in ("select", "input_select"):
+            raise ValueError(f"Unsupported mode entity: {battery.mode_entity}")
+        try:
+            async with asyncio.timeout(5):
+                await self.hass.services.async_call(domain, "select_option", {"entity_id": battery.mode_entity, "option": option}, blocking=True)
+                while True:
+                    state = self.hass.states.get(battery.mode_entity)
+                    if state is not None and state.state == option:
+                        return
+                    await asyncio.sleep(0.1)
+        except TimeoutError as err:
+            raise ValueError(f"Mode change not confirmed within 5 seconds: {battery.mode_entity}") from err
 
     def _command_targets(self):
         result = []
@@ -172,6 +202,12 @@ class PoolRuntime:
                 except Exception:
                     failures.append(entity)
                     _LOGGER.warning("Could not send zero power to battery command %s", entity)
+            if b.mode_entity:
+                try:
+                    await self._write_mode(b, b.idle_mode)
+                except Exception:
+                    failures.append(b.mode_entity)
+                    _LOGGER.warning("Could not set battery idle mode: %s", b.mode_entity)
         self._stop_pending = bool(failures)
         if failures:
             self.fault = "stop_failed: " + ", ".join(failures)
@@ -195,7 +231,12 @@ class PoolRuntime:
                     try:
                         self._validate_adapters()
                     except (ValueError, KeyError, TypeError) as err:
-                        self.fault = str(err)
+                        self.fault = str(err) or type(err).__name__
+                        if self.enabled:
+                            await self._stop_outputs()
+                        self.enabled = False
+                        self.planned = 0
+                        self.outputs = {b.name: 0 for b in self.batteries}
                         self.status = "fault"
                         self.notify()
                         raise ValueError(self.fault) from err
@@ -273,6 +314,19 @@ class PoolRuntime:
                     try:
                         self._validate_adapters()
                         targets = self._command_targets()
+                        mode_changes = []
+                        for b in self.batteries:
+                            if not b.mode_entity:
+                                continue
+                            has_power = any(target != 0 and endpoint.name == b.name for endpoint, target in targets)
+                            power = self.outputs.get(b.name, 0)
+                            desired = (b.charge_mode if power < 0 else b.discharge_mode) if has_power else b.idle_mode
+                            if self._mode_state(b).state != desired:
+                                mode_changes.append((b, desired))
+                        # Clear both requests before changing this battery's direction mode.
+                        for b, _ in mode_changes:
+                            for entity in b.command_entities:
+                                await self._write(replace(b, command_entity=entity), 0)
                         # Stop/reduce old commands across the entire pool before any increase.
                         for endpoint, target in targets:
                             current = float(self.hass.states.get(endpoint.command_entity).state)
@@ -283,11 +337,15 @@ class PoolRuntime:
                         for endpoint, target in targets:
                             if target == 0:
                                 await self._write(endpoint, 0)
+                        # Service completion AND HA state readback must confirm every mode
+                        # before any battery receives a nonzero power command.
+                        for b, desired in mode_changes:
+                            await self._write_mode(b, desired)
                         for endpoint, target in targets:
                             if target != 0:
                                 await self._write(endpoint, target)
                     except Exception as err:
-                        self.fault = str(err)
+                        self.fault = str(err) or type(err).__name__
                         await self._stop_outputs()
             if self.fault:
                 self.status = "fault"

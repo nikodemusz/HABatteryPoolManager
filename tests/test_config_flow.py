@@ -250,3 +250,82 @@ async def test_optional_maximum_entity_can_be_cleared_when_editing(context):
     assert 'max_charge_entity' not in submitted
     result = await flow.async_step_battery(submitted)
     assert 'max_charge_entity' not in result['data']['batteries'][0]
+
+
+def add_mode_entity(flow):
+    flow.hass.states.async_set('select.force_mode', 'standby', {'options': ['standby', 'charge', 'discharge']})
+
+
+@pytest.mark.asyncio
+async def test_mode_mapping_uses_actual_options_and_saves_only_after_mapping(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    add_mode_entity(flow)
+    result = await flow.async_step_add_battery(values(mode_entity='select.force_mode'))
+    assert result['step_id'] == 'battery_modes' and entry.options == {}
+    payload = api_payload(result)
+    for field in payload['data_schema']:
+        assert field['selector']['select']['options'] == ['standby', 'charge', 'discharge']
+    result = await flow.async_step_battery_modes({'charge_mode': 'charge', 'discharge_mode': 'discharge', 'idle_mode': 'standby'})
+    battery = result['data']['batteries'][0]
+    assert battery['mode_entity'] == 'select.force_mode'
+    assert battery['idle_mode'] == 'standby'
+    entry.options = result['data']
+    flow = new_flow()
+    await flow.async_step_init()
+    await flow.async_step_edit_battery({'battery': battery['id']})
+    result = await flow.async_step_battery(values(mode_entity='select.force_mode'))
+    payload = api_payload(result)
+    assert next(f for f in payload['data_schema'] if f['name'] == 'idle_mode')['default'] == 'standby'
+
+
+@pytest.mark.asyncio
+async def test_invalid_mode_mappings_return_serializable_errors(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    add_mode_entity(flow)
+    await flow.async_step_add_battery(values(mode_entity='select.force_mode'))
+    result = await flow.async_step_battery_modes({'charge_mode': 'missing', 'discharge_mode': 'discharge', 'idle_mode': 'standby'})
+    assert result['errors']['charge_mode'] == 'mode_option_invalid'
+    api_payload(result)
+    result = await flow.async_step_battery_modes({'charge_mode': 'charge', 'discharge_mode': 'charge', 'idle_mode': 'standby'})
+    assert result['errors']['base'] == 'distinct_modes'
+    api_payload(result)
+    flow.hass.states.async_set('select.force_mode', 'unavailable', {'options': ['standby', 'charge', 'discharge']})
+    result = await flow.async_step_battery_modes({'charge_mode': 'charge', 'discharge_mode': 'discharge', 'idle_mode': 'standby'})
+    assert result['errors']['base'] == 'mode_unavailable'
+    api_payload(result)
+    assert entry.options == {}
+
+
+@pytest.mark.asyncio
+async def test_mode_control_must_not_be_shared(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    add_mode_entity(flow)
+    await flow.async_step_add_battery(values(mode_entity='select.force_mode'))
+    entry.options = (await flow.async_step_battery_modes({'charge_mode': 'charge', 'discharge_mode': 'discharge', 'idle_mode': 'standby'}))['data']
+    flow = new_flow()
+    await flow.async_step_init()
+    result = await flow.async_step_add_battery(values(name='Other', command_entity='input_number.command', mode_entity='select.force_mode'))
+    assert result['errors']['mode_entity'] == 'duplicate_command'
+
+
+@pytest.mark.asyncio
+async def test_mode_mapping_can_be_removed_without_retaining_stale_options(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    add_mode_entity(flow)
+    await flow.async_step_add_battery(values(mode_entity='select.force_mode'))
+    entry.options = (await flow.async_step_battery_modes({'charge_mode': 'charge', 'discharge_mode': 'discharge', 'idle_mode': 'standby'}))['data']
+    flow = new_flow()
+    await flow.async_step_init()
+    result = await flow.async_step_edit_battery({'battery': entry.options['batteries'][0]['id']})
+    submitted = result['data_schema'](values())
+    result = await flow.async_step_battery(submitted)
+    saved = result['data']['batteries'][0]
+    assert not {'mode_entity', 'charge_mode', 'discharge_mode', 'idle_mode'} & saved.keys()

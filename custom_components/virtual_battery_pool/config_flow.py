@@ -56,7 +56,7 @@ def validate_numbers(data, bounds):
 
 def configured_command_entities(config):
     keys = ("charge_command_entity", "discharge_command_entity") if config.get("command_mode", "signed") == "separate" else ("command_entity",)
-    return {config[key] for key in keys if config.get(key)}
+    return {config[key] for key in (*keys, "mode_entity") if config.get(key)}
 
 
 def configured_limit_entities(config):
@@ -78,6 +78,7 @@ def battery_schema(values=None):
         "discharge_command_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number"]))),
         "max_charge_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number", "sensor"]))),
         "max_discharge_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["number", "input_number", "sensor"]))),
+        "mode_entity": (None, selector.EntitySelector(selector.EntitySelectorConfig(domain=["select", "input_select"]))),
         "power_unit_w_confirmed": (False, selector.BooleanSelector()),
         "positive_discharge": (True, selector.BooleanSelector()),
         "adapter_confirmed": (False, selector.BooleanSelector()),
@@ -88,7 +89,7 @@ def battery_schema(values=None):
     }
     for key, (default, validator) in definitions.items():
         default = values.get(key, default)
-        optional = key in {"command_entity", "charge_command_entity", "discharge_command_entity", "max_charge_entity", "max_discharge_entity"}
+        optional = key in {"command_entity", "charge_command_entity", "discharge_command_entity", "max_charge_entity", "max_discharge_entity", "mode_entity"}
         if optional:
             # A suggested selection can be cleared; a backend default would silently restore it.
             marker = vol.Optional(key, description={"suggested_value": default}) if default is not None else vol.Optional(key)
@@ -123,6 +124,8 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
         self._batteries = None
         self._selected = None
         self._settings = {}
+        self._pending_battery = None
+        self._mode_options = []
 
     async def async_step_init(self, user_input=None):
         if self._batteries is None:
@@ -157,15 +160,22 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
                 errors["power_entity"] = "distinct_sensors"
             data.setdefault("command_mode", "signed")
             command_fields = ("charge_command_entity", "discharge_command_entity") if data["command_mode"] == "separate" else ("command_entity",)
-            for field in ("soc_entity", "power_entity", *command_fields, "max_charge_entity", "max_discharge_entity"):
+            for field in ("soc_entity", "power_entity", *command_fields, "max_charge_entity", "max_discharge_entity", "mode_entity"):
                 if not data.get(field):
                     if field in command_fields:
                         errors[field] = "command_required"
                 elif self.hass.states.get(data[field]) is None:
                     errors[field] = "entity_missing"
+            if data.get("mode_entity"):
+                state = self.hass.states.get(data["mode_entity"])
+                options = state.attributes.get("options", []) if state else []
+                if (state is None or state.state in ("unknown", "unavailable")
+                        or not isinstance(options, list) or not all(isinstance(o, str) for o in options)
+                        or len(set(options)) < 3):
+                    errors["mode_entity"] = "mode_unavailable"
             commands = configured_command_entities(data)
             limits = configured_limit_entities(data)
-            if len(commands) != len(command_fields) and all(data.get(k) for k in command_fields):
+            if len({data.get(k) for k in command_fields}) != len(command_fields) and all(data.get(k) for k in command_fields):
                 errors[command_fields[-1]] = "duplicate_command"
             conflicts = commands & limits
             others = [b for b in self._batteries if b["id"] != self._selected]
@@ -177,7 +187,7 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
                 other_limits = configured_limit_entities(other)
                 conflicts |= commands & (other_commands | other_limits)
                 conflicts |= limits & other_commands
-            for field in (*command_fields, "max_charge_entity", "max_discharge_entity"):
+            for field in (*command_fields, "max_charge_entity", "max_discharge_entity", "mode_entity"):
                 if data.get(field) in conflicts:
                     errors[field] = "duplicate_command"
             if not errors:
@@ -189,12 +199,55 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
                 else:
                     data.pop("command_entity", None)
                     data.pop("command_service", None)
-                if existing:
-                    self._batteries[self._batteries.index(existing)] = data
-                else:
-                    self._batteries.append(data)
-                return self._save()
+                if data.get("mode_entity"):
+                    self._pending_battery = data
+                    self._mode_options = list(self.hass.states.get(data["mode_entity"]).attributes["options"])
+                    if existing.get("mode_entity") == data["mode_entity"]:
+                        for key in ("charge_mode", "discharge_mode", "idle_mode"):
+                            if existing.get(key):
+                                self._pending_battery[key] = existing[key]
+                    return await self.async_step_battery_modes()
+                for key in ("mode_entity", "charge_mode", "discharge_mode", "idle_mode"):
+                    data.pop(key, None)
+                return self._save_battery(data)
         return self.async_show_form(step_id=step_id, data_schema=battery_schema(data if user_input is not None else existing), errors=errors)
+
+    def _save_battery(self, data):
+        existing = next((b for b in self._batteries if b["id"] == data["id"]), None)
+        if existing:
+            self._batteries[self._batteries.index(existing)] = data
+        else:
+            self._batteries.append(data)
+        return self._save()
+
+    async def async_step_battery_modes(self, user_input=None):
+        if self._pending_battery is None:
+            return self.async_abort(reason="configuration_expired")
+        keys = ("charge_mode", "discharge_mode", "idle_mode")
+        entity = self._pending_battery["mode_entity"]
+        state = self.hass.states.get(entity)
+        options = state.attributes.get("options", []) if state else []
+        errors = {}
+        if (state is None or state.state in ("unknown", "unavailable")
+                or not isinstance(options, list) or not all(isinstance(o, str) for o in options) or len(set(options)) < 3):
+            errors["base"] = "mode_unavailable"
+        else:
+            self._mode_options = list(options)
+        if user_input is not None:
+            for key in keys:
+                if user_input.get(key) not in self._mode_options:
+                    errors[key] = "mode_option_invalid"
+            if len({user_input.get(key) for key in keys}) != 3:
+                errors["base"] = "distinct_modes"
+            if not errors:
+                return self._save_battery({**self._pending_battery, **{key: user_input[key] for key in keys}})
+        schema = {}
+        for key in keys:
+            value = (user_input or self._pending_battery).get(key)
+            marker = vol.Required(key, default=value) if value in self._mode_options else vol.Required(key)
+            schema[marker] = selector.SelectSelector(selector.SelectSelectorConfig(options=self._mode_options, mode=selector.SelectSelectorMode.DROPDOWN))
+        return self.async_show_form(step_id="battery_modes", data_schema=vol.Schema(schema), errors=errors,
+                                    description_placeholders={"entity": entity})
 
     def _selection_form(self, step_id):
         return self.async_show_form(step_id=step_id, data_schema=vol.Schema({

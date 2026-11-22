@@ -33,12 +33,20 @@ class BatteryConfig:
     max_charge_entity: str = ""
     max_discharge_entity: str = ""
     power_unit_w_confirmed: bool = False
+    mode_entity: str = ""
+    charge_mode: str = ""
+    discharge_mode: str = ""
+    idle_mode: str = ""
 
     @property
     def command_entities(self):
         if self.command_mode == "separate":
             return (self.charge_command_entity, self.discharge_command_entity)
         return (self.command_entity,)
+
+    @property
+    def control_entities(self):
+        return self.command_entities + ((self.mode_entity,) if self.mode_entity else ())
 
     @property
     def limit_entities(self):

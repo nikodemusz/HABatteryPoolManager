@@ -50,7 +50,8 @@
           "discharge_command_entity": "Requested discharging power — setpoint entity (W)",
           "max_charge_entity": "Device maximum charging power — read only (optional)",
           "max_discharge_entity": "Device maximum discharging power — read only (optional)",
-          "power_unit_w_confirmed": "Controls without a displayed unit use watts"
+          "power_unit_w_confirmed": "Controls without a displayed unit use watts",
+          "mode_entity": "Charge / discharge / idle mode entity (optional)"
         },
         "data_description": {
           "name": "A name of your choice, unique within this pool, e.g. “Garage battery”. This identifies one battery system, rather than the whole pool.",
@@ -63,13 +64,14 @@
           "max_charge_w": "Additional per-battery software limit; default 300 W, greater than zero. The current charge request cannot exceed this limit OR the optionally linked device maximum. This is neither an entity selection nor a current charge request.",
           "max_discharge_w": "Additional per-battery software limit; default 300 W, greater than zero. The current discharge request cannot exceed this limit OR the optionally linked device maximum. This is neither an entity selection nor a current discharge request.",
           "positive_discharge": "Measured AC power convention: on = positive discharge, negative charge; off = reversed. In signed mode the combined command must use the same convention. Separate charge/discharge requests are always positive magnitudes.",
-          "adapter_confirmed": "Confirm that the selected controls send current power requests, the device remote-control mode is correct, and a device-side watchdog stops power if commands cease. Both separate setpoints must stop their direction at zero; a combined signed setpoint must stop at zero and support both signs. An input_number needs a real device bridge. Maximum-power controls alone are insufficient.",
+          "adapter_confirmed": "Confirm that the selected controls send current power requests, the device remote-control mode is correct, and a device-side watchdog stops power if commands cease. Both separate setpoints must stop their direction at zero; a combined signed setpoint must stop at zero and support both signs. An input_number needs a real device bridge. Maximum-power controls alone are insufficient. If a mode entity is assigned, its three mapped options must activate the correct directions or a true idle state. General remote-control prerequisites must already be configured correctly.",
           "command_mode": "Separate setpoints: one entity each for the current requested charge and discharge power, both positive watts. This fits devices with four controls (two requests and two maxima). Signed: one combined entity for both directions. Only the setpoint fields for the selected mode are used.",
           "charge_command_entity": "Separate mode: select the control for the CURRENT requested charging power, e.g. “Set charging power”. Positive values request charging; zero stops the charge request. Do not select “Maximum charging power”. The discharge request is explicitly zeroed before any charge command.",
           "discharge_command_entity": "Separate mode: select the control for the CURRENT requested discharging power, e.g. “Set discharging power”. Positive values request discharge; zero stops the discharge request. Do not select “Maximum discharging power”. The charge request is explicitly zeroed before any discharge command.",
           "max_charge_entity": "Optionally select the separate “Maximum charging power” control or sensor in W. Its current value is read as an additional ceiling; the pool never writes to it. It is not a charge request. Zero disables charging; invalid or stale readings stop the pool. If omitted, the additional pool limit applies.",
           "max_discharge_entity": "Optionally select the separate “Maximum discharging power” control or sensor in W. Its current value is read as an additional ceiling; the pool never writes to it. It is not a discharge request. Zero disables discharge; invalid or stale readings stop the pool. If omitted, the additional pool limit applies.",
-          "power_unit_w_confirmed": "Confirm only when device documentation states that the selected setpoint and maximum-power entities use watts but Home Assistant displays no unit. Missing units on these controls are then accepted. A, kW and % are not converted and remain invalid. Measurement sensors still require the correct units."
+          "power_unit_w_confirmed": "Confirm only when device documentation states that the selected setpoint and maximum-power entities use watts but Home Assistant displays no unit. Missing units on these controls are then accepted. A, kW and % are not converted and remain invalid. Measurement sensors still require the correct units.",
+          "mode_entity": "If the device additionally determines power direction through a mode, select its select or input_select entity, e.g. “Forced mode”. In the next step map its actual options for charge, discharge and idle. Do not use the general user mode selecting manual, automatic or trading operation. If omitted, device modes are left unchanged."
         }
       },
       "battery": {
@@ -92,7 +94,8 @@
           "discharge_command_entity": "Requested discharging power — setpoint entity (W)",
           "max_charge_entity": "Device maximum charging power — read only (optional)",
           "max_discharge_entity": "Device maximum discharging power — read only (optional)",
-          "power_unit_w_confirmed": "Controls without a displayed unit use watts"
+          "power_unit_w_confirmed": "Controls without a displayed unit use watts",
+          "mode_entity": "Charge / discharge / idle mode entity (optional)"
         },
         "data_description": {
           "name": "A name of your choice, unique within this pool, e.g. “Garage battery”. This identifies one battery system, rather than the whole pool.",
@@ -105,13 +108,14 @@
           "max_charge_w": "Additional per-battery software limit; default 300 W, greater than zero. The current charge request cannot exceed this limit OR the optionally linked device maximum. This is neither an entity selection nor a current charge request.",
           "max_discharge_w": "Additional per-battery software limit; default 300 W, greater than zero. The current discharge request cannot exceed this limit OR the optionally linked device maximum. This is neither an entity selection nor a current discharge request.",
           "positive_discharge": "Measured AC power convention: on = positive discharge, negative charge; off = reversed. In signed mode the combined command must use the same convention. Separate charge/discharge requests are always positive magnitudes.",
-          "adapter_confirmed": "Confirm that the selected controls send current power requests, the device remote-control mode is correct, and a device-side watchdog stops power if commands cease. Both separate setpoints must stop their direction at zero; a combined signed setpoint must stop at zero and support both signs. An input_number needs a real device bridge. Maximum-power controls alone are insufficient.",
+          "adapter_confirmed": "Confirm that the selected controls send current power requests, the device remote-control mode is correct, and a device-side watchdog stops power if commands cease. Both separate setpoints must stop their direction at zero; a combined signed setpoint must stop at zero and support both signs. An input_number needs a real device bridge. Maximum-power controls alone are insufficient. If a mode entity is assigned, its three mapped options must activate the correct directions or a true idle state. General remote-control prerequisites must already be configured correctly.",
           "command_mode": "Separate setpoints: one entity each for the current requested charge and discharge power, both positive watts. This fits devices with four controls (two requests and two maxima). Signed: one combined entity for both directions. Only the setpoint fields for the selected mode are used.",
           "charge_command_entity": "Separate mode: select the control for the CURRENT requested charging power, e.g. “Set charging power”. Positive values request charging; zero stops the charge request. Do not select “Maximum charging power”. The discharge request is explicitly zeroed before any charge command.",
           "discharge_command_entity": "Separate mode: select the control for the CURRENT requested discharging power, e.g. “Set discharging power”. Positive values request discharge; zero stops the discharge request. Do not select “Maximum discharging power”. The charge request is explicitly zeroed before any discharge command.",
           "max_charge_entity": "Optionally select the separate “Maximum charging power” control or sensor in W. Its current value is read as an additional ceiling; the pool never writes to it. It is not a charge request. Zero disables charging; invalid or stale readings stop the pool. If omitted, the additional pool limit applies.",
           "max_discharge_entity": "Optionally select the separate “Maximum discharging power” control or sensor in W. Its current value is read as an additional ceiling; the pool never writes to it. It is not a discharge request. Zero disables discharge; invalid or stale readings stop the pool. If omitted, the additional pool limit applies.",
-          "power_unit_w_confirmed": "Confirm only when device documentation states that the selected setpoint and maximum-power entities use watts but Home Assistant displays no unit. Missing units on these controls are then accepted. A, kW and % are not converted and remain invalid. Measurement sensors still require the correct units."
+          "power_unit_w_confirmed": "Confirm only when device documentation states that the selected setpoint and maximum-power entities use watts but Home Assistant displays no unit. Missing units on these controls are then accepted. A, kW and % are not converted and remain invalid. Measurement sensors still require the correct units.",
+          "mode_entity": "If the device additionally determines power direction through a mode, select its select or input_select entity, e.g. “Forced mode”. In the next step map its actual options for charge, discharge and idle. Do not use the general user mode selecting manual, automatic or trading operation. If omitted, device modes are left unchanged."
         }
       },
       "edit_battery": {
@@ -151,6 +155,20 @@
           "grid_confirmed": "For self-consumption, verify that grid import is positive and export is negative in W. An incorrect convention can amplify the imbalance. All battery sensors must measure the same AC side of this grid connection.",
           "grid_target_w": "Default 20 W residual grid import rather than exact zero export. A small positive margin reduces oscillation near zero. Only used in self-consumption mode."
         }
+      },
+      "battery_modes": {
+        "title": "Map device modes",
+        "description": "Choose the actual charge, discharge and idle options for {entity}. Power setpoints are zeroed before a mode change. Power is requested only after the new mode is confirmed in Home Assistant. Stopping selects the idle mode.",
+        "data": {
+          "charge_mode": "Charging mode",
+          "discharge_mode": "Discharging mode",
+          "idle_mode": "Idle / stop mode"
+        },
+        "data_description": {
+          "charge_mode": "Option activating charging, e.g. charge. Not a general user mode such as manual.",
+          "discharge_mode": "Option activating discharging, e.g. discharge.",
+          "idle_mode": "A true idle option, e.g. standby. Requested at 0 W, on faults, when the pool is switched off and on unload. Do not select an automatic mode which independently charges or discharges."
+        }
       }
     },
     "error": {
@@ -159,12 +177,18 @@
       "invalid_soc_range": "Minimum SOC must be lower than maximum SOC.",
       "distinct_sensors": "Choose separate SOC and power sensors.",
       "entity_missing": "This entity no longer exists.",
-      "duplicate_command": "Setpoint entities must be unique and cannot also be used as device maxima.",
+      "duplicate_command": "Power and mode controls must be unique per battery system and cannot also control a device-maximum entity.",
       "grid_required": "Select an existing grid power sensor in W for self-consumption.",
       "grid_confirmation_required": "Verify and confirm the grid measurement sign convention.",
       "adapters_required": "Add at least one battery and confirm the verified adapter contract for every battery first.",
       "invalid_number": "Enter a finite number within the permitted range.",
-      "command_required": "Select the requested-power entity required by this mode."
+      "command_required": "Select the requested-power entity required by this mode.",
+      "mode_unavailable": "The mode entity must be available and offer at least three distinct options.",
+      "mode_option_invalid": "Select an option currently available on the chosen mode entity.",
+      "distinct_modes": "Choose three distinct options for charging, discharging and idle."
+    },
+    "abort": {
+      "configuration_expired": "Setup expired. Reopen Configure."
     }
   },
   "selector": {
