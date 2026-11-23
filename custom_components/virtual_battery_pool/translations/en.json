@@ -216,18 +216,28 @@
           "no_batteries": "No batteries configured",
           "fault": "Fault — check attributes",
           "invalid_readings": "Invalid measurements",
-          "target_expired": "Waiting for a fresh request"
+          "target_expired": "Waiting for a fresh request",
+          "invalid_limits": "Invalid power limits / units"
         }
       }
     },
     "number": {
       "target": {
         "name": "Power request (+ discharge / − charge)"
+      },
+      "charge_target": {
+        "name": "Charging power request"
+      },
+      "discharge_target": {
+        "name": "Discharging power request"
       }
     },
     "switch": {
       "enabled": {
         "name": "Pool control"
+      },
+      "separate_controls": {
+        "name": "Separate charge/discharge controls"
       }
     }
   }

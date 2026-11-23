@@ -216,18 +216,28 @@
           "no_batteries": "Keine Batteriesysteme eingerichtet",
           "fault": "Fehler — Attribute prüfen",
           "invalid_readings": "Ungültige Messwerte",
-          "target_expired": "Warte auf frischen Sollwert"
+          "target_expired": "Warte auf frischen Sollwert",
+          "invalid_limits": "Ungültige Leistungsgrenzen / Einheiten"
         }
       }
     },
     "number": {
       "target": {
         "name": "Leistungsvorgabe (+ Entladen / − Laden)"
+      },
+      "charge_target": {
+        "name": "Lade-Sollwert"
+      },
+      "discharge_target": {
+        "name": "Entlade-Sollwert"
       }
     },
     "switch": {
       "enabled": {
         "name": "Pool-Steuerung"
+      },
+      "separate_controls": {
+        "name": "Getrennte Lade-/Entladeregler"
       }
     }
   }

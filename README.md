@@ -1,6 +1,6 @@
 # Virtual Battery Pool
 
-A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.4.1 removes editor plausibility checks to allow staged migrations of existing batteries. Version 0.4 adds configurable charge/discharge/idle mode control alongside separate power requests, read-only device maxima, signed-watt adapters, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2. Version 0.2.1 fixes setup forms failing to render by using native number selectors and validating finite values on submission.
+A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.5 adds a persistent switch between signed and separate positive pool requests, mutually exclusive charging/discharging controls, and independent measurement display when power-limit configuration is invalid. Version 0.4.1 removes editor plausibility checks to allow staged migrations of existing batteries. Version 0.4 adds configurable charge/discharge/idle mode control alongside separate power requests, read-only device maxima, signed-watt adapters, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2. Version 0.2.1 fixes setup forms failing to render by using native number selectors and validating finite values on submission.
 
 ## Supported battery adapters
 
@@ -51,6 +51,18 @@ Set the pool's new **Power request (+ discharge / − charge)** number entity us
 
 Refresh the request **more frequently than 60 seconds**, including if its value is unchanged. After 60 seconds without a fresh service call the request expires and the planner requests zero at its next 5-second tick (plus device communication time). A 15-second automation interval is suitable. A zero request stops immediately; switching **Pool control** off also clears the request. The number entity retains the last requested value after expiry; **Control status** reports that a fresh request is needed.
 
+### Separate charging and discharging pool controls
+
+In external mode, turn on the new **Separate charge/discharge controls** switch on the pool device. This makes **Charging power request** and **Discharging power request** available, both using positive watts. The original signed control is unavailable while this interface is selected. Turn the switch off to use the original signed control. The inactive interface rejects service calls, so the two interfaces cannot fight over one request.
+
+Turn on **Pool control**, then set the desired direction's value. For example, charging = 500 requests up to 500 W of pool charging without a negative sign. Setting discharge = 300 then clears the charge request and requests up to 300 W of discharge, subject to the existing zero-output reversal guard. Setting the active direction to zero stops. A zero sent to the inactive direction does not stop or refresh the other direction.
+
+These requests use the same **60-second lifetime** as the signed request. Refresh the active request more frequently than 60 seconds for continued external control. A stream of zeros on the inactive channel does not keep an old active request alive. For continuous autonomous operation use grid self-consumption mode instead.
+
+Changing the interface clears any previous request and stops current external output. The interface preference is saved independently of battery settings, so switching it does not reload the integration. Only that preference is restored after restart; pool enablement and power requests always start off/zero. In grid self-consumption mode all manual input entities, including this interface switch, are unavailable because the grid controller supplies the request.
+
+This **pool input switch** is independent of each battery's **adapter type**: either pool interface can control batteries using signed or separate device setpoints and optional direction modes.
+
 ### Grid self-consumption
 
 Select a whole-home grid connection power sensor in **W**, **positive for import and negative for export**, and confirm this convention. It must include all the batteries and the rest of the home. Do not choose PV generation or an individual battery's power.
@@ -87,6 +99,14 @@ These defaults reduce routine depth of discharge and power stress; they cannot s
 - Switching off, reloading/unloading, and a normal Home Assistant shutdown attempt zero on all confirmed adapters that were active. A failed stop remains visible in the fault attribute.
 - Service success is not proof of physical power reaching zero. A power/network failure, a hung device, or abrupt process termination can prevent software stop commands. The required **device-side watchdog** handles this case. The integration does not configure the watchdog or general vendor operating/remote-control prerequisites for you. Mode readback confirms Home Assistant state, not physical battery behavior.
 
+## If the pool shows unknown measurements or will not dispatch
+
+Inspect **Control status → input_error** and **fault**. Starting with 0.5, valid SOC and measured AC power remain visible even if a device limit is invalid; the status then reports **Invalid power limits / units** and dispatch stays at zero.
+
+If a power-limit or request entity has no unit metadata but its device documentation specifies watts, confirm **Controls without a displayed unit use watts** for that battery. Without confirmation, the integration does not assume a missing unit means watts. A, kW or % remain invalid. Verify that each battery's maximum charging entity really refers to its charging limit, rather than accidentally reusing its discharge limit. Device maxima remain read only.
+
+For manual operation, fix configuration errors, select external mode, choose the input interface, turn on Pool control, and send a fresh request. Check the simulation plan before enabling live output. For autonomous operation, configure the grid sensor and choose grid self-consumption. A displayed old request alone does not keep dispatch active after its 60-second lifetime.
+
 ## Development and validation
 
 Use Python 3.14 and `python -m pip install -r requirements-dev.txt`, then run:
@@ -95,7 +115,7 @@ Use Python 3.14 and `python -m pip install -r requirements-dev.txt`, then run:
 python -m pytest -q -o asyncio_default_fixture_loop_scope=function
 ```
 
-Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, two-battery staged migration with overlapping mappings, HTTP form serialization, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, separate endpoint interlocking, independent read-only device limits, mapped mode sequencing/readback/failure handling, missing-unit confirmation, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
+Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, two-battery staged migration with overlapping mappings, HTTP form serialization, independent telemetry/limit errors, separate pool controls and persistent interface selection, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, separate endpoint interlocking, independent read-only device limits, mapped mode sequencing/readback/failure handling, missing-unit confirmation, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
 
 ## References and license
 

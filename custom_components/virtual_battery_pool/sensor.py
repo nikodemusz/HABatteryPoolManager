@@ -20,7 +20,7 @@ class PoolSensor(PoolEntity, SensorEntity):
         self._attr_native_unit_of_measurement = unit
         if key == "status":
             self._attr_device_class = SensorDeviceClass.ENUM
-            self._attr_options = ["disabled", "dispatch", "inside_deadband", "soc_limit", "direction_reversal_guard", "stale_or_invalid_data", "no_batteries", "fault", "invalid_readings", "target_expired"]
+            self._attr_options = ["disabled", "dispatch", "inside_deadband", "soc_limit", "direction_reversal_guard", "stale_or_invalid_data", "no_batteries", "fault", "invalid_readings", "invalid_limits", "target_expired"]
         if unit:
             self._attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -33,5 +33,5 @@ class PoolSensor(PoolEntity, SensorEntity):
         if self.key == "status":
             return {"simulation": not self.runtime.live, "mode": self.runtime.mode,
                     "fault": self.runtime.fault, "input_error": self.runtime.input_error, "battery_plan_w": self.runtime.outputs,
-                    "target_timeout_seconds": 60}
+                    "target_timeout_seconds": 60, "control_interface": self.runtime.control_interface}
         return None

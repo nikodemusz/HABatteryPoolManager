@@ -8,12 +8,17 @@ import math
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import BatteryConfig, ControllerConfig, CONF_BATTERIES, DOMAIN, TARGET_TIMEOUT, TICK_SECONDS
 from .controller import BatteryReading, Direction, PoolController
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def control_store(hass, entry_id):
+    return Store(hass, 1, f"{DOMAIN}.{entry_id}.controls")
 
 
 class PoolRuntime:
@@ -28,6 +33,8 @@ class PoolRuntime:
         self.enabled = False
         self.target = 0.0
         self.target_at = None
+        self.separate_controls = False
+        self.control_store = control_store(hass, entry.entry_id)
         self.status = "disabled"
         self.fault = None
         self.input_error = None
@@ -40,6 +47,22 @@ class PoolRuntime:
         self._closed = False
         self._stop_pending = False
         self.signal = f"{DOMAIN}_{entry.entry_id}"
+
+    async def async_initialize(self):
+        preferences = await self.control_store.async_load()
+        self.separate_controls = isinstance(preferences, dict) and preferences.get("separate_controls") is True
+
+    @property
+    def charge_target(self):
+        return max(0, -self.target)
+
+    @property
+    def discharge_target(self):
+        return max(0, self.target)
+
+    @property
+    def control_interface(self):
+        return "separate" if self.separate_controls else "signed"
 
     @callback
     def notify(self):
@@ -247,12 +270,71 @@ class PoolRuntime:
                 self.controller = PoolController(ControllerConfig(self.batteries)) if self.batteries else None
         await self.update()
 
+    @staticmethod
+    def _validated_target(value, minimum):
+        try:
+            value = float(value)
+        except (ValueError, TypeError) as err:
+            raise ValueError("Power request must be a number") from err
+        if not math.isfinite(value) or not minimum <= value <= 100000:
+            raise ValueError(f"Power request must be finite and within {minimum} to 100000 W")
+        return value
+
+    def _check_request_source(self, separate):
+        if self.mode != "external":
+            raise ValueError("Manual power requests are only used in external control mode")
+        if self.separate_controls != separate:
+            raise ValueError("This power control is inactive; check the separate charge/discharge controls switch")
+
     async def set_target(self, value):
-        if not math.isfinite(value) or abs(value) > 100000:
-            raise ValueError("Target must be finite and within ±100000 W")
+        value = self._validated_target(value, -100000)
         async with self.lock:
+            if self._closed:
+                return
+            self._check_request_source(False)
             self.target = value
             self.target_at = dt_util.utcnow()
+        await self.update()
+
+    async def set_direction_target(self, direction, value):
+        if direction not in ("charge", "discharge"):
+            raise ValueError("Direction must be charge or discharge")
+        value = self._validated_target(value, 0)
+        async with self.lock:
+            if self._closed:
+                return
+            self._check_request_source(True)
+            active = self.target < 0 if direction == "charge" else self.target > 0
+            if value == 0 and self.target != 0 and not active:
+                # A zero on the inactive channel must neither stop the active
+                # request nor keep an expired request alive through a heartbeat.
+                return
+            self.target = -value if direction == "charge" else value
+            self.target_at = dt_util.utcnow()
+        await self.update()
+
+    async def set_separate_controls(self, enabled):
+        if not isinstance(enabled, bool):
+            raise ValueError("Separate controls must be on or off")
+        async with self.lock:
+            if self._closed:
+                return
+            if self.mode != "external":
+                raise ValueError("Separate manual controls require external control mode")
+            if enabled == self.separate_controls:
+                return
+            # Persist only the UI preference, never enablement or a power request.
+            # A storage failure leaves the existing interface and request unchanged.
+            await self.control_store.async_save({"separate_controls": enabled})
+            self.separate_controls = enabled
+            self.target = 0
+            self.target_at = None
+            self.planned = 0
+            self.outputs = {b.name: 0 for b in self.batteries}
+            if self.controller:
+                self.controller.plan({}, 0, dt_util.utcnow())
+            if self.enabled:
+                await self._stop_outputs()
         await self.update()
 
     async def update(self):
@@ -263,8 +345,8 @@ class PoolRuntime:
             readings = {}
             effective_batteries = self.batteries
             error = None
+            limit_error = None
             try:
-                effective_batteries = self._effective_batteries(now)
                 for b in self.batteries:
                     soc, soc_at = self._read(b.soc_entity, "%", now)
                     power, power_at = self._read(b.power_entity, "W", now)
@@ -274,6 +356,12 @@ class PoolRuntime:
             except (ValueError, TypeError) as err:
                 error = str(err)
                 self.measured = None
+            try:
+                effective_batteries = self._effective_batteries(now)
+            except (ValueError, TypeError) as err:
+                limit_error = str(err)
+            measurement_error = error
+            error = error or limit_error
             request = 0
             reason = None
             if self.enabled and not self.fault and not error and self.controller:
@@ -302,7 +390,7 @@ class PoolRuntime:
                 self.planned = 0
                 self.status = "no_batteries"
             if error:
-                self.status = "invalid_readings"
+                self.status = "invalid_limits" if limit_error and not measurement_error else "invalid_readings"
             if not self.enabled:
                 self.status = "disabled"
                 if self._stop_pending:

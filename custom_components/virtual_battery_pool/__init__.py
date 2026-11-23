@@ -1,7 +1,7 @@
 """Virtual battery pool integration."""
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from .const import DOMAIN, PLATFORMS
-from .runtime import PoolRuntime
+from .runtime import PoolRuntime, control_store
 
 
 async def async_setup(hass, config):
@@ -11,6 +11,7 @@ async def async_setup(hass, config):
 
 async def async_setup_entry(hass, entry):
     runtime = PoolRuntime(hass, entry)
+    await runtime.async_initialize()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     runtime.start()
@@ -34,3 +35,7 @@ async def async_unload_entry(hass, entry):
         hass.data[DOMAIN].pop(entry.entry_id)
         return True
     return False
+
+
+async def async_remove_entry(hass, entry):
+    await control_store(hass, entry.entry_id).async_remove()

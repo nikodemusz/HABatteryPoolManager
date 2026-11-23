@@ -323,7 +323,7 @@ async def test_invalid_limit_stops_both_setpoints(rig, value):
     await r.set_target(1000)
     rig.hass.states.async_set('number.discharge_limit', value, rig.attrs)
     await r.update()
-    assert r.status == 'invalid_readings' and r.planned == 0
+    assert r.status == 'invalid_limits' and r.planned == 0
     assert r.input_error
     assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]
 
@@ -586,3 +586,176 @@ async def test_failed_reactivation_stops_previous_requests_and_selects_idle(rig)
         await r.set_enabled(True)
     assert not r.enabled and r.planned == 0
     assert device.events == [('power', 'number.charge', 0), ('power', 'number.discharge', 0), ('mode', device.entity, 'standby')]
+
+
+@pytest.mark.asyncio
+async def test_pool_controls_switch_persists_only_interface_and_clears_request(rig):
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(500)
+    await r.set_separate_controls(True)
+    assert r.separate_controls and r.target == 0 and r.target_at is None
+    assert r.planned == 0
+    await r.set_direction_target('charge', 500)
+    restored = PoolRuntime(rig.hass, rig.entry)
+    await restored.async_initialize()
+    assert restored.separate_controls and restored.target == 0 and not restored.enabled
+    assert rig.calls == []  # Still simulation.
+
+
+@pytest.mark.asyncio
+async def test_pool_separate_requests_are_mutually_exclusive_and_keep_reversal_guard(rig):
+    r = rig.runtime
+    await r.set_separate_controls(True)
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_direction_target('charge', 500)
+    assert r.target == -500 and r.charge_target == 500 and r.discharge_target == 0
+    assert r.planned == -25
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_direction_target('discharge', 800)
+    assert r.target == 800 and r.charge_target == 0 and r.discharge_target == 800
+    assert r.planned == 0 and r.status == 'direction_reversal_guard'
+    rig.clock.now += timedelta(seconds=30)
+    await r.update()
+    assert r.planned > 0
+
+
+@pytest.mark.asyncio
+async def test_zero_on_inactive_pool_channel_does_not_cancel_or_refresh_other_channel(rig):
+    r = rig.runtime
+    await r.set_separate_controls(True)
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_direction_target('charge', 500)
+    stamp = r.target_at
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_direction_target('discharge', 0)
+    assert r.target == -500 and r.target_at == stamp
+    await r.set_direction_target('charge', 0)
+    assert r.target == 0 and r.planned == 0
+
+
+@pytest.mark.asyncio
+async def test_layout_switch_zeroes_live_requests_and_device_mode(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(500)
+    device.events.clear()
+    await r.set_separate_controls(True)
+    assert r.target == 0 and r.planned == 0
+    assert ('power', 'number.charge', 0) in device.events
+    assert ('power', 'number.discharge', 0) in device.events
+    assert ('mode', device.entity, 'standby') in device.events
+    assert not any(kind == 'power' and value > 0 for kind, _, value in device.events)
+
+
+@pytest.mark.asyncio
+async def test_only_selected_pool_interface_accepts_requests(rig):
+    r = rig.runtime
+    with pytest.raises(ValueError, match='inactive'):
+        await r.set_direction_target('charge', 100)
+    await r.set_separate_controls(True)
+    with pytest.raises(ValueError, match='inactive'):
+        await r.set_target(100)
+    assert r.target == 0
+    r.mode = 'autonomous'
+    with pytest.raises(ValueError, match='external'):
+        await r.set_direction_target('charge', 100)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('value', [-1, float('nan'), float('inf'), 100001, 'invalid'])
+async def test_pool_direction_requests_reject_invalid_values(rig, value):
+    await rig.runtime.set_separate_controls(True)
+    with pytest.raises(ValueError):
+        await rig.runtime.set_direction_target('charge', value)
+    assert rig.runtime.target == 0 and rig.calls == []
+
+
+@pytest.mark.asyncio
+async def test_invalid_unitless_limits_do_not_hide_valid_soc_and_measured_power(rig):
+    b = separate_adapter(rig)
+    r = rig.runtime
+    rig.hass.states.async_set(b.soc_entity, '73', {'unit_of_measurement': '%'})
+    rig.hass.states.async_set(b.power_entity, '125', {'unit_of_measurement': 'W'})
+    rig.hass.states.async_set(b.max_charge_entity, '120', {'min': 0, 'max': 1000, 'step': 1})
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(500)
+    assert r.soc == 73 and r.measured == 125
+    assert r.status == 'invalid_limits' and r.planned == 0 and r.input_error
+    assert rig.calls == []
+
+
+@pytest.mark.asyncio
+async def test_pool_input_entities_follow_selected_interface(rig):
+    from homeassistant.exceptions import HomeAssistantError
+    from custom_components.virtual_battery_pool.number import PoolTarget, PoolDirectionTarget
+    from custom_components.virtual_battery_pool.switch import PoolSeparateControls
+    r = rig.runtime
+    signed = PoolTarget(r)
+    charge = PoolDirectionTarget(r, 'charge')
+    discharge = PoolDirectionTarget(r, 'discharge')
+    layout = PoolSeparateControls(r)
+    assert signed.available and not charge.available and not discharge.available
+    await layout.async_turn_on()
+    assert layout.is_on and not signed.available and charge.available and discharge.available
+    await charge.async_set_native_value(250)
+    assert charge.native_value == 250 and discharge.native_value == 0
+    await discharge.async_set_native_value(500)
+    assert charge.native_value == 0 and discharge.native_value == 500
+    with pytest.raises(HomeAssistantError):
+        await signed.async_set_native_value(100)
+    await layout.async_turn_off()
+    assert signed.available and r.target == 0
+    r.mode = 'autonomous'
+    assert not signed.available and not charge.available and not discharge.available and not layout.available
+
+
+@pytest.mark.asyncio
+async def test_separate_pool_controls_drive_device_modes_and_both_directions(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_separate_controls(True)
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_direction_target('charge', 500)
+    assert rig.hass.states.get(device.entity).state == 'charge'
+    assert rig.hass.states.get('number.charge').state == '25.0'
+    assert rig.hass.states.get('number.discharge').state == '0'
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_direction_target('discharge', 500)
+    assert r.planned == 0 and rig.hass.states.get(device.entity).state == 'standby'
+    rig.clock.now += timedelta(seconds=30)
+    await r.update()
+    assert rig.hass.states.get(device.entity).state == 'discharge'
+    assert rig.hass.states.get('number.charge').state == '0'
+    assert rig.hass.states.get('number.discharge').state == '25.0'
+
+
+@pytest.mark.asyncio
+async def test_separate_charge_request_stops_at_soc_ceiling_and_on_expiry(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    await r.set_separate_controls(True)
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_direction_target('charge', 500)
+    rig.hass.states.async_set(r.batteries[0].soc_entity, '80', {'unit_of_measurement': '%'})
+    await r.update()
+    assert r.planned == 0 and r.status == 'soc_limit'
+    assert rig.hass.states.get(device.entity).state == 'standby'
+    rig.hass.states.async_set(r.batteries[0].soc_entity, '50', {'unit_of_measurement': '%'})
+    r.target_at -= timedelta(seconds=61)
+    await r.set_direction_target('discharge', 0)
+    await r.update()
+    assert r.status == 'target_expired' and r.planned == 0
+    assert rig.hass.states.get(device.entity).state == 'standby'
+    assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]

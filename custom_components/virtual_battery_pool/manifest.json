@@ -1,7 +1,7 @@
 {
   "domain": "virtual_battery_pool",
   "name": "Virtual Battery Pool",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "documentation": "https://github.com/nikodemusz/HABatteryPoolManager",
   "codeowners": [
     "@nikodemusz"

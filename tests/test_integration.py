@@ -34,9 +34,23 @@ async def test_platform_setup_restart_defaults_and_unload(tmp_path):
         from homeassistant.helpers import entity_registry as er
         registry = er.async_get(hass)
         entities = er.async_entries_for_config_entry(registry, entry.entry_id)
-        assert len(entities) == 6
+        assert len(entities) == 9
         assert {e.domain for e in entities} == {'number','switch','sensor'}
         assert all(hass.states.get(e.entity_id) is not None for e in entities)
+        ids = {e.unique_id.removeprefix(entry.entry_id + "_"): e.entity_id for e in entities}
+        assert hass.states.get(ids['target']).state != 'unavailable'
+        assert hass.states.get(ids['charge_target']).state == 'unavailable'
+        await hass.services.async_call('switch', 'turn_on', {'entity_id': ids['separate_controls']}, blocking=True)
+        await hass.async_block_till_done()
+        assert hass.states.get(ids['separate_controls']).state == 'on'
+        assert hass.states.get(ids['target']).state == 'unavailable'
+        assert hass.states.get(ids['charge_target']).state != 'unavailable'
+        await hass.services.async_call('number', 'set_value', {'entity_id': ids['charge_target'], 'value': 250}, blocking=True)
+        assert runtime.target == -250 and runtime.discharge_target == 0
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        restored = hass.data[DOMAIN][entry.entry_id]
+        assert restored.separate_controls and not restored.enabled and restored.target == 0
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert entry.entry_id not in hass.data[DOMAIN]
     finally:

@@ -1,11 +1,16 @@
+"""Selectable signed or separate manual power requests for the virtual pool."""
+from datetime import timedelta
+
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.exceptions import HomeAssistantError
-from .const import DOMAIN
+
+from .const import DOMAIN, TARGET_TIMEOUT
 from .entity import PoolEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    async_add_entities([PoolTarget(hass.data[DOMAIN][entry.entry_id])])
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([PoolTarget(runtime), PoolDirectionTarget(runtime, "charge"), PoolDirectionTarget(runtime, "discharge")])
 
 
 class PoolTarget(PoolEntity, NumberEntity):
@@ -20,15 +25,45 @@ class PoolTarget(PoolEntity, NumberEntity):
         super().__init__(runtime, "target", "Power request (+ discharge / − charge)")
 
     @property
+    def available(self):
+        return not self.runtime._closed and self.runtime.mode == "external" and not self.runtime.separate_controls
+
+    @property
     def native_value(self):
         return self.runtime.target
 
     @property
     def extra_state_attributes(self):
-        return {"refresh_within_seconds": 60, "used_in_mode": "external"}
+        expires = self.runtime.target_at + timedelta(seconds=TARGET_TIMEOUT) if self.runtime.target_at else None
+        return {"refresh_within_seconds": TARGET_TIMEOUT, "used_in_mode": "external",
+                "control_interface": self.runtime.control_interface,
+                "request_expires_at": expires.isoformat() if expires else None}
 
     async def async_set_native_value(self, value):
         try:
             await self.runtime.set_target(value)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+
+
+class PoolDirectionTarget(PoolTarget):
+    _attr_native_min_value = 0
+
+    def __init__(self, runtime, direction):
+        PoolEntity.__init__(self, runtime, f"{direction}_target", f"Requested {direction} power")
+        self.direction = direction
+        self._attr_icon = "mdi:battery-arrow-up" if direction == "charge" else "mdi:battery-arrow-down"
+
+    @property
+    def available(self):
+        return not self.runtime._closed and self.runtime.mode == "external" and self.runtime.separate_controls
+
+    @property
+    def native_value(self):
+        return self.runtime.charge_target if self.direction == "charge" else self.runtime.discharge_target
+
+    async def async_set_native_value(self, value):
+        try:
+            await self.runtime.set_direction_target(self.direction, value)
         except ValueError as err:
             raise HomeAssistantError(str(err)) from err
