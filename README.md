@@ -1,6 +1,6 @@
 # Virtual Battery Pool
 
-A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.4 adds configurable charge/discharge/idle mode control alongside separate power requests, read-only device maxima, signed-watt adapters, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2. Version 0.2.1 fixes setup forms failing to render by using native number selectors and validating finite values on submission.
+A Home Assistant integration for combining AC-coupled batteries into one controllable pool. Version 0.4.1 removes editor plausibility checks to allow staged migrations of existing batteries. Version 0.4 adds configurable charge/discharge/idle mode control alongside separate power requests, read-only device maxima, signed-watt adapters, simulation, and grid self-consumption control. Requires Home Assistant 2026.11 or newer; tested with 2026.11.2. Version 0.2.1 fixes setup forms failing to render by using native number selectors and validating finite values on submission.
 
 ## Supported battery adapters
 
@@ -27,13 +27,21 @@ Unsigned maximum-power limiters alone cannot request charging or discharging. Di
    - Optionally assign **Device maximum charging power** and **Device maximum discharging power**, e.g. “Maximum charging power” / “Maximum discharging power”. These are **not** current requests and are **never written**, including when stopping.
    - Keep the additional pool software limits at 300 W initially. Each direction uses the lower of its software limit and linked device maximum. A device maximum of zero disables only that direction.
    - If these controls are documented as watts but Home Assistant supplies no unit, explicitly confirm **Controls without a displayed unit use watts**. This accepts missing units only on the selected request/maximum entities; A, kW and % are rejected. SOC and AC measurement sensors still need % and W respectively.
-   - If charging/discharging also requires a mode, select **Charge / discharge / idle mode entity**, e.g. the device's **Forced mode**. The next form lists that entity's actual options. Map charge → `charge`, discharge → `discharge`, idle → `standby` for an adapter exposing those values. There are no guessed mappings for other devices. A general **User mode** (`manual` / `anti_feed` / `trade_mode`) is a different prerequisite, not a substitute for direction control. Choose a real idle state, not an autonomous mode that can independently transfer power.
-4. Repeat for other batteries. Power and direction-mode entities cannot be assigned twice, including across pools.
+   - If charging/discharging also requires a mode, select **Charge / discharge / idle mode entity**, e.g. the device's **Forced mode**. The next form suggests that entity's actual options and also accepts typed values while it is offline. Map charge → `charge`, discharge → `discharge`, idle → `standby` for an adapter exposing those values. There are no guessed mappings for other devices. A general **User mode** (`manual` / `anti_feed` / `trade_mode`) is a different prerequisite, not a substitute for direction control. Choose a real idle state, not an autonomous mode that can independently transfer power.
+4. Repeat for other batteries. Editor saves allow intermediate overlapping mappings, including across pools. Live operation still rejects conflicting power and direction-mode assignments.
 5. Open **Control mode and live output**. Leave live output **off** for simulation. Choose external request or grid self-consumption.
 6. Open the pool device and turn on **Pool control**. Inspect **Control status**, **Pool state of charge**, **Measured AC power**, and **Planned AC power**. Status attributes show the plan per battery, selected mode, simulation flag, any input validation error (`input_error`), and any latched fault. Simulation sends **no device commands**, including stop commands and mode selections.
 7. After verifying each adapter's sign, zero behavior, remote mode, and watchdog on the actual device, confirm its adapter contract in the battery editor and enable **live output** in the pool settings. This reloads the integration and leaves the pool **off**. Turn on its switch to start. Activation rejects missing services, unavailable command entities, incompatible units/ranges, and live collisions with another pool.
 
 **Pool control is off after every restart or options change.** A previous power request is never restored. Existing combined signed mappings remain in signed mode; new batteries default to separate requests. Existing adapters without a mapped mode continue to leave device modes untouched; edit them to add mode control where required. Existing battery mappings remain intact; existing SOC/power limits are preserved rather than silently overwritten. Existing adapters need to be edited and confirmed before live output is possible. Review older 0–100 % or 800 W settings if you want the new conservative defaults.
+
+## Editing existing systems during a migration
+
+The editor saves each battery independently. It no longer checks cross-battery or cross-pool assignments, power/limit role overlap, duplicate names, relative SOC limits, sensor separation, entity availability, or mode-option consistency when saving. Missing optional command mappings and configuration-only intermediate states can be saved. Mode options can be typed even when their entity is unavailable. Basic field types, required names/measurement fields, and finite numeric ranges remain enforced.
+
+This allows two existing battery systems to be moved to the new model one at a time without a temporary overlap blocking the first save. IDs and the other battery's saved settings are preserved. Control settings can also be saved before all adapters and the grid input are complete.
+
+Runtime protections are unchanged: conflicting controls, missing entities, unconfirmed adapters, invalid modes, or invalid inputs cannot produce a nonzero live plan. Fix intermediate mappings before activating live operation. Every options save reloads the pool and leaves its switch off.
 
 ## Operating modes
 
@@ -87,7 +95,7 @@ Use Python 3.14 and `python -m pip install -r requirements-dev.txt`, then run:
 python -m pytest -q -o asyncio_default_fixture_loop_scope=function
 ```
 
-Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, HTTP form serialization, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, separate endpoint interlocking, independent read-only device limits, mapped mode sequencing/readback/failure handling, missing-unit confirmation, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
+Tests cover planner bounds, weighted SOC, ramp growth, reversal timing, unsafe readings, persistent options, two-battery staged migration with overlapping mappings, HTTP form serialization, simulation, live signed service calls, stale/expired input, partial failures, stop behavior, separate endpoint interlocking, independent read-only device limits, mapped mode sequencing/readback/failure handling, missing-unit confirmation, cross-pool collisions, and the actual integration/entity setup and unload inside an isolated Home Assistant instance. They use fake device services; they do not certify any real battery adapter.
 
 ## References and license
 

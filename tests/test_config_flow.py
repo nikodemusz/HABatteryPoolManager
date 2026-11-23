@@ -66,20 +66,17 @@ async def test_add_edit_remove_and_preserve_other_options(context):
 
 
 @pytest.mark.asyncio
-async def test_validation_and_multiple_batteries(context):
+async def test_migration_intermediate_values_can_be_saved(context):
     entry, new_flow = context
     flow = new_flow()
     await flow.async_step_init()
-    result = await flow.async_step_add_battery(values())
-    entry.options = result['data']
-    flow = new_flow()
-    await flow.async_step_init()
-    assert (await flow.async_step_add_battery(values(name=' garage ')))['errors']['name'] == 'duplicate_name'
-    assert (await flow.async_step_add_battery(values(name='Other', min_soc=90, max_soc=10)))['errors']['min_soc'] == 'invalid_soc_range'
-    assert (await flow.async_step_add_battery(values(name='Other', soc_entity='sensor.missing')))['errors']['soc_entity'] == 'entity_missing'
-    result = await flow.async_step_add_battery(values(name='Other', command_entity='input_number.command'))
-    assert len(result['data']['batteries']) == 2
-    assert len(entry.options['batteries']) == 1
+    entry.options = (await flow.async_step_add_battery(values()))['data']
+    for changes in [{'name': ' garage '}, {'name': 'Other', 'min_soc': 90, 'max_soc': 10}, {'name': 'Other', 'soc_entity': 'sensor.missing'}, {'name': 'Other', 'power_entity': 'sensor.soc'}]:
+        flow = new_flow()
+        await flow.async_step_init()
+        result = await flow.async_step_add_battery(values(**changes))
+        assert len(result['data']['batteries']) == 2
+        assert len(entry.options['batteries']) == 1
 
 
 @pytest.mark.parametrize('changes', [{'capacity_kwh': 0}, {'min_soc': -1}, {'max_soc': 101}, {'max_charge_w': -1}, {'command_entity': 'switch.command'}])
@@ -89,24 +86,19 @@ def test_invalid_schema_values(changes):
 
 
 @pytest.mark.asyncio
-async def test_live_requires_confirmed_adapters_and_grid_requires_confirmation(context):
+async def test_control_settings_can_be_saved_before_adapters_are_finished(context):
     entry, new_flow = context
     flow = new_flow()
     await flow.async_step_init()
-    args = {'control_mode': 'external', 'live_control': True, 'grid_confirmed': False, 'grid_target_w': 20}
+    args = {'control_mode': 'autonomous', 'live_control': True, 'grid_confirmed': False, 'grid_target_w': 20}
     result = await flow.async_step_control_settings(args)
-    assert result['errors']['live_control'] == 'adapters_required'
-    args.update(control_mode='autonomous', live_control=False)
-    result = await flow.async_step_control_settings(args)
-    assert result['errors']['grid_power_entity'] == 'grid_required'
-    assert result['errors']['grid_confirmed'] == 'grid_confirmation_required'
-    args.update(control_mode='external')
-    result = await flow.async_step_control_settings(args)
-    assert result['data']['live_control'] is False
+    assert result['data']['live_control'] is True
+    assert result['data']['grid_power_entity'] is None
+    assert result['data']['batteries'] == []
 
 
 @pytest.mark.asyncio
-async def test_duplicate_command_entity_is_rejected(context):
+async def test_overlapping_command_entities_do_not_block_saving(context):
     entry, new_flow = context
     flow = new_flow()
     await flow.async_step_init()
@@ -114,7 +106,8 @@ async def test_duplicate_command_entity_is_rejected(context):
     flow = new_flow()
     await flow.async_step_init()
     result = await flow.async_step_add_battery(values(name='Second'))
-    assert result['errors']['command_entity'] == 'duplicate_command'
+    assert len(result['data']['batteries']) == 2
+    assert result['data']['batteries'][0]['command_entity'] == result['data']['batteries'][1]['command_entity']
 
 
 
@@ -205,20 +198,13 @@ async def test_separate_controls_and_read_only_limits_round_trip(context):
 
 
 @pytest.mark.asyncio
-async def test_separate_controls_are_required_distinct_and_not_limits(context):
+async def test_partial_and_conflicting_separate_mappings_can_be_saved(context):
     entry, new_flow = context
-    flow = new_flow()
-    await flow.async_step_init()
-    result = await flow.async_step_add_battery(values(command_mode='separate'))
-    assert result['errors']['charge_command_entity'] == 'command_required'
-    assert result['errors']['discharge_command_entity'] == 'command_required'
-    api_payload(result)
-    data = values(command_mode='separate', charge_command_entity='number.command', discharge_command_entity='number.command')
-    assert (await flow.async_step_add_battery(data))['errors']['discharge_command_entity'] == 'duplicate_command'
-    data.update(discharge_command_entity='input_number.command', max_charge_entity='number.command')
-    result = await flow.async_step_add_battery(data)
-    assert result['errors']['max_charge_entity'] == 'duplicate_command'
-    assert entry.options == {}
+    for changes in [{}, {'charge_command_entity': 'number.command', 'discharge_command_entity': 'number.command'}, {'charge_command_entity': 'number.command', 'discharge_command_entity': 'input_number.command', 'max_charge_entity': 'number.command'}]:
+        flow = new_flow()
+        await flow.async_step_init()
+        result = await flow.async_step_add_battery(values(command_mode='separate', **changes))
+        assert result['data']['batteries'][0]['command_mode'] == 'separate'
 
 
 @pytest.mark.asyncio
@@ -281,37 +267,34 @@ async def test_mode_mapping_uses_actual_options_and_saves_only_after_mapping(con
 
 
 @pytest.mark.asyncio
-async def test_invalid_mode_mappings_return_serializable_errors(context):
+async def test_mode_mappings_can_be_edited_without_live_availability_checks(context):
     entry, new_flow = context
     flow = new_flow()
     await flow.async_step_init()
-    add_mode_entity(flow)
-    await flow.async_step_add_battery(values(mode_entity='select.force_mode'))
-    result = await flow.async_step_battery_modes({'charge_mode': 'missing', 'discharge_mode': 'discharge', 'idle_mode': 'standby'})
-    assert result['errors']['charge_mode'] == 'mode_option_invalid'
-    api_payload(result)
-    result = await flow.async_step_battery_modes({'charge_mode': 'charge', 'discharge_mode': 'charge', 'idle_mode': 'standby'})
-    assert result['errors']['base'] == 'distinct_modes'
-    api_payload(result)
-    flow.hass.states.async_set('select.force_mode', 'unavailable', {'options': ['standby', 'charge', 'discharge']})
-    result = await flow.async_step_battery_modes({'charge_mode': 'charge', 'discharge_mode': 'discharge', 'idle_mode': 'standby'})
-    assert result['errors']['base'] == 'mode_unavailable'
-    api_payload(result)
-    assert entry.options == {}
+    # No live entity or options are required to prepare a mapping.
+    result = await flow.async_step_add_battery(values(mode_entity='select.offline_mode'))
+    payload = api_payload(result)
+    assert all(field['selector']['select']['custom_value'] for field in payload['data_schema'])
+    mapping = {'charge_mode': 'charge', 'discharge_mode': 'charge', 'idle_mode': 'future_option'}
+    result = await flow.async_step_battery_modes(mapping)
+    assert result['data']['batteries'][0]['discharge_mode'] == 'charge'
+    assert result['data']['batteries'][0]['idle_mode'] == 'future_option'
 
 
 @pytest.mark.asyncio
-async def test_mode_control_must_not_be_shared(context):
+async def test_shared_mode_control_does_not_block_editing(context):
     entry, new_flow = context
     flow = new_flow()
     await flow.async_step_init()
     add_mode_entity(flow)
+    mapping = {'charge_mode': 'charge', 'discharge_mode': 'discharge', 'idle_mode': 'standby'}
     await flow.async_step_add_battery(values(mode_entity='select.force_mode'))
-    entry.options = (await flow.async_step_battery_modes({'charge_mode': 'charge', 'discharge_mode': 'discharge', 'idle_mode': 'standby'}))['data']
+    entry.options = (await flow.async_step_battery_modes(mapping))['data']
     flow = new_flow()
     await flow.async_step_init()
     result = await flow.async_step_add_battery(values(name='Other', command_entity='input_number.command', mode_entity='select.force_mode'))
-    assert result['errors']['mode_entity'] == 'duplicate_command'
+    assert result['step_id'] == 'battery_modes'
+    assert len((await flow.async_step_battery_modes(mapping))['data']['batteries']) == 2
 
 
 @pytest.mark.asyncio
@@ -329,3 +312,40 @@ async def test_mode_mapping_can_be_removed_without_retaining_stale_options(conte
     result = await flow.async_step_battery(submitted)
     saved = result['data']['batteries'][0]
     assert not {'mode_entity', 'charge_mode', 'discharge_mode', 'idle_mode'} & saved.keys()
+
+
+@pytest.mark.asyncio
+async def test_two_existing_batteries_can_be_migrated_one_at_a_time(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    entry.options = (await flow.async_step_add_battery(values(name='First', command_entity='number.command')))['data']
+    flow = new_flow()
+    await flow.async_step_init()
+    entry.options = (await flow.async_step_add_battery(values(name='Second', command_entity='input_number.command')))['data']
+    first_id, second_id = [b['id'] for b in entry.options['batteries']]
+    # Move a legacy command to its new role even while the other battery
+    # still refers to it. This was the blocking plausibility check.
+    flow = new_flow()
+    await flow.async_step_init()
+    await flow.async_step_edit_battery({'battery': first_id})
+    result = await flow.async_step_battery(values(name='First', command_mode='separate', charge_command_entity='number.command', discharge_command_entity='input_number.command'))
+    entry.options = result['data']
+    assert len(entry.options['batteries']) == 2
+    assert [b['id'] for b in entry.options['batteries']] == [first_id, second_id]
+    flow = new_flow()
+    await flow.async_step_init()
+    await flow.async_step_edit_battery({'battery': second_id})
+    result = await flow.async_step_battery(values(name='Second', command_mode='separate', charge_command_entity='number.second_charge', discharge_command_entity='number.second_discharge'))
+    assert [b['id'] for b in result['data']['batteries']] == [first_id, second_id]
+    assert result['data']['batteries'][0] == entry.options['batteries'][0]
+    assert result['data']['batteries'][1]['charge_command_entity'] == 'number.second_charge'
+
+
+@pytest.mark.asyncio
+async def test_other_pools_are_not_consulted_during_configuration(context):
+    entry, new_flow = context
+    flow = new_flow()
+    await flow.async_step_init()
+    flow.hass.config_entries.async_entries.side_effect = AssertionError('No cross-pool validation while editing')
+    assert (await flow.async_step_add_battery(values()))['data']['batteries']

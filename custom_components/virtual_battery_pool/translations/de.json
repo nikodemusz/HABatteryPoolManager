@@ -32,7 +32,7 @@
       },
       "add_battery": {
         "title": "Batteriesystem hinzufügen",
-        "description": "Leistungsanforderungen und Maximalwerte getrennt zuordnen: Sollwert-Regler werden gesteuert, Maximal-Regler nur gelesen. Die zusätzlichen Pool-Obergrenzen gelten immer. Zuerst in Simulation prüfen; Live-Ausgabe und Geräteanbindung bleiben separat freizugeben.",
+        "description": "Zuordnungen und Zwischenstände lassen sich unabhängig von anderen Batteriesystemen speichern. Die Prüfung für echte Leistungsbefehle erfolgt erst im Betrieb. Leistungs-Sollwerte werden gesteuert, Maximal-Regler nur gelesen; die zusätzlichen Pool-Obergrenzen gelten weiterhin.",
         "data": {
           "name": "Name dieses Batteriesystems",
           "capacity_kwh": "Nutzbare Kapazität dieses Batteriesystems (kWh)",
@@ -71,12 +71,12 @@
           "max_charge_entity": "Optional den separaten Regler oder Sensor „Maximale Ladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Ladebefehl. Ein Wert von 0 sperrt Laden; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
           "max_discharge_entity": "Optional den separaten Regler oder Sensor „Maximale Entladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Entladebefehl. Ein Wert von 0 sperrt Entladen; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
           "power_unit_w_confirmed": "Nur bestätigen, wenn laut Gerätebeschreibung die gewählten Sollwert- und Maximal-Regler tatsächlich Watt verwenden, Home Assistant aber keine Einheit anzeigt. Dann sind fehlende Einheiten bei diesen Reglern erlaubt. A, kW oder % werden nicht umgerechnet und bleiben unzulässig. Die Messsensoren benötigen weiterhin die korrekten Einheiten.",
-          "mode_entity": "Falls das Gerät die Leistungsrichtung zusätzlich über einen Modus vorgibt, dessen select- oder input_select-Entity auswählen, z. B. „Erzwungener Modus“. Im nächsten Schritt die vorhandenen Optionen für Laden, Entladen und Stillstand zuordnen. Nicht den allgemeinen Benutzer-Modus mit manueller, automatischer oder Handels-Betriebsart verwenden. Ohne Auswahl bleiben Geräte-Modi unverändert."
+          "mode_entity": "Falls das Gerät die Leistungsrichtung zusätzlich über einen Modus vorgibt, dessen select- oder input_select-Entity auswählen, z. B. „Erzwungener Modus“. Im nächsten Schritt die vorhandenen Optionen für Laden, Entladen und Stillstand zuordnen. Nicht den allgemeinen Benutzer-Modus mit manueller, automatischer oder Handels-Betriebsart verwenden. Ohne Auswahl bleiben Geräte-Modi unverändert. Vorhandene Optionen dienen als Vorschläge; Werte lassen sich bei offline geschalteten Entities auch frei eingeben."
         }
       },
       "battery": {
         "title": "Batteriesystem bearbeiten",
-        "description": "Leistungsanforderungen und Maximalwerte getrennt zuordnen: Sollwert-Regler werden gesteuert, Maximal-Regler nur gelesen. Die zusätzlichen Pool-Obergrenzen gelten immer. Zuerst in Simulation prüfen; Live-Ausgabe und Geräteanbindung bleiben separat freizugeben.",
+        "description": "Zuordnungen und Zwischenstände lassen sich unabhängig von anderen Batteriesystemen speichern. Die Prüfung für echte Leistungsbefehle erfolgt erst im Betrieb. Leistungs-Sollwerte werden gesteuert, Maximal-Regler nur gelesen; die zusätzlichen Pool-Obergrenzen gelten weiterhin.",
         "data": {
           "name": "Name dieses Batteriesystems",
           "capacity_kwh": "Nutzbare Kapazität dieses Batteriesystems (kWh)",
@@ -115,7 +115,7 @@
           "max_charge_entity": "Optional den separaten Regler oder Sensor „Maximale Ladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Ladebefehl. Ein Wert von 0 sperrt Laden; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
           "max_discharge_entity": "Optional den separaten Regler oder Sensor „Maximale Entladeleistung“ in W auswählen. Der Pool liest seinen aktuellen Wert als zusätzliche Obergrenze und verändert diesen Regler niemals. Er ist kein Entladebefehl. Ein Wert von 0 sperrt Entladen; bei ungültigen/veralteten Werten stoppt der Pool. Ohne Auswahl gilt die zusätzliche Pool-Obergrenze.",
           "power_unit_w_confirmed": "Nur bestätigen, wenn laut Gerätebeschreibung die gewählten Sollwert- und Maximal-Regler tatsächlich Watt verwenden, Home Assistant aber keine Einheit anzeigt. Dann sind fehlende Einheiten bei diesen Reglern erlaubt. A, kW oder % werden nicht umgerechnet und bleiben unzulässig. Die Messsensoren benötigen weiterhin die korrekten Einheiten.",
-          "mode_entity": "Falls das Gerät die Leistungsrichtung zusätzlich über einen Modus vorgibt, dessen select- oder input_select-Entity auswählen, z. B. „Erzwungener Modus“. Im nächsten Schritt die vorhandenen Optionen für Laden, Entladen und Stillstand zuordnen. Nicht den allgemeinen Benutzer-Modus mit manueller, automatischer oder Handels-Betriebsart verwenden. Ohne Auswahl bleiben Geräte-Modi unverändert."
+          "mode_entity": "Falls das Gerät die Leistungsrichtung zusätzlich über einen Modus vorgibt, dessen select- oder input_select-Entity auswählen, z. B. „Erzwungener Modus“. Im nächsten Schritt die vorhandenen Optionen für Laden, Entladen und Stillstand zuordnen. Nicht den allgemeinen Benutzer-Modus mit manueller, automatischer oder Handels-Betriebsart verwenden. Ohne Auswahl bleiben Geräte-Modi unverändert. Vorhandene Optionen dienen als Vorschläge; Werte lassen sich bei offline geschalteten Entities auch frei eingeben."
         }
       },
       "edit_battery": {
@@ -158,7 +158,7 @@
       },
       "battery_modes": {
         "title": "Geräte-Modi zuordnen",
-        "description": "Für {entity} die tatsächlichen Optionen für Laden, Entladen und Stillstand auswählen. Vor einem Moduswechsel werden die Leistungs-Sollwerte auf 0 gesetzt. Erst nach Bestätigung des neuen Modus in Home Assistant wird Leistung angefordert. Beim Stoppen wird der Stillstandsmodus gewählt.",
+        "description": "Für {entity} die Optionen für Laden, Entladen und Stillstand eintragen. Vorhandene Optionen sind Vorschläge. Die Plausibilität wird beim Speichern nicht geprüft, damit Zwischenstände während einer Umstellung möglich sind. Vor echten Gerätebefehlen werden Entity und Optionen weiterhin geprüft.",
         "data": {
           "charge_mode": "Modus für Laden",
           "discharge_mode": "Modus für Entladen",
@@ -173,19 +173,7 @@
     },
     "error": {
       "required_name": "Bitte einen Namen eingeben.",
-      "duplicate_name": "Ein Batteriesystem mit diesem Namen existiert bereits.",
-      "invalid_soc_range": "Der minimale Ladezustand muss kleiner als der maximale sein.",
-      "distinct_sensors": "Separate Sensoren für Ladezustand und Leistung auswählen.",
-      "entity_missing": "Diese Entity existiert nicht mehr.",
-      "duplicate_command": "Leistungs- und Modus-Regler müssen pro Batteriesystem eindeutig sein und dürfen keine Maximalwert-Entity steuern.",
-      "grid_required": "Für Eigenverbrauch einen vorhandenen Netzleistungssensor in W auswählen.",
-      "grid_confirmation_required": "Die Vorzeichen der Netzmessung müssen geprüft und bestätigt sein.",
-      "adapters_required": "Zuerst mindestens ein Batteriesystem anlegen und bei allen die geprüfte Geräteanbindung bestätigen.",
-      "invalid_number": "Bitte eine endliche Zahl innerhalb des erlaubten Wertebereichs eingeben.",
-      "command_required": "Den zum gewählten Modus gehörenden Sollwert-Regler auswählen.",
-      "mode_unavailable": "Die Modus-Entity muss verfügbar sein und mindestens drei verschiedene Optionen anbieten.",
-      "mode_option_invalid": "Eine aktuell verfügbare Option der gewählten Modus-Entity auswählen.",
-      "distinct_modes": "Für Laden, Entladen und Stillstand drei verschiedene Optionen auswählen."
+      "invalid_number": "Bitte eine endliche Zahl innerhalb des erlaubten Wertebereichs eingeben."
     },
     "abort": {
       "configuration_expired": "Einrichtung abgelaufen. Konfigurieren erneut öffnen."

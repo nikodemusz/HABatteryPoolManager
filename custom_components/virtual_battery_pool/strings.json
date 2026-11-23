@@ -32,7 +32,7 @@
       },
       "add_battery": {
         "title": "Add battery system",
-        "description": "Assign current requests separately from device maxima: setpoint entities are controlled, maximum-power entities are only read. Additional pool limits always apply. Verify in simulation first; live output and adapter confirmation remain separate.",
+        "description": "Save mappings and intermediate configurations independently of other battery systems. Checks for actual power commands run during operation. Setpoint entities are controlled, device maxima are only read, and additional pool limits still apply.",
         "data": {
           "name": "Name of this battery system",
           "capacity_kwh": "Usable capacity of this battery system (kWh)",
@@ -71,12 +71,12 @@
           "max_charge_entity": "Optionally select the separate “Maximum charging power” control or sensor in W. Its current value is read as an additional ceiling; the pool never writes to it. It is not a charge request. Zero disables charging; invalid or stale readings stop the pool. If omitted, the additional pool limit applies.",
           "max_discharge_entity": "Optionally select the separate “Maximum discharging power” control or sensor in W. Its current value is read as an additional ceiling; the pool never writes to it. It is not a discharge request. Zero disables discharge; invalid or stale readings stop the pool. If omitted, the additional pool limit applies.",
           "power_unit_w_confirmed": "Confirm only when device documentation states that the selected setpoint and maximum-power entities use watts but Home Assistant displays no unit. Missing units on these controls are then accepted. A, kW and % are not converted and remain invalid. Measurement sensors still require the correct units.",
-          "mode_entity": "If the device additionally determines power direction through a mode, select its select or input_select entity, e.g. “Forced mode”. In the next step map its actual options for charge, discharge and idle. Do not use the general user mode selecting manual, automatic or trading operation. If omitted, device modes are left unchanged."
+          "mode_entity": "If the device additionally determines power direction through a mode, select its select or input_select entity, e.g. “Forced mode”. In the next step map its actual options for charge, discharge and idle. Do not use the general user mode selecting manual, automatic or trading operation. If omitted, device modes are left unchanged. Existing options are suggestions; values can also be entered manually while entities are offline."
         }
       },
       "battery": {
         "title": "Edit battery system",
-        "description": "Assign current requests separately from device maxima: setpoint entities are controlled, maximum-power entities are only read. Additional pool limits always apply. Verify in simulation first; live output and adapter confirmation remain separate.",
+        "description": "Save mappings and intermediate configurations independently of other battery systems. Checks for actual power commands run during operation. Setpoint entities are controlled, device maxima are only read, and additional pool limits still apply.",
         "data": {
           "name": "Name of this battery system",
           "capacity_kwh": "Usable capacity of this battery system (kWh)",
@@ -115,7 +115,7 @@
           "max_charge_entity": "Optionally select the separate “Maximum charging power” control or sensor in W. Its current value is read as an additional ceiling; the pool never writes to it. It is not a charge request. Zero disables charging; invalid or stale readings stop the pool. If omitted, the additional pool limit applies.",
           "max_discharge_entity": "Optionally select the separate “Maximum discharging power” control or sensor in W. Its current value is read as an additional ceiling; the pool never writes to it. It is not a discharge request. Zero disables discharge; invalid or stale readings stop the pool. If omitted, the additional pool limit applies.",
           "power_unit_w_confirmed": "Confirm only when device documentation states that the selected setpoint and maximum-power entities use watts but Home Assistant displays no unit. Missing units on these controls are then accepted. A, kW and % are not converted and remain invalid. Measurement sensors still require the correct units.",
-          "mode_entity": "If the device additionally determines power direction through a mode, select its select or input_select entity, e.g. “Forced mode”. In the next step map its actual options for charge, discharge and idle. Do not use the general user mode selecting manual, automatic or trading operation. If omitted, device modes are left unchanged."
+          "mode_entity": "If the device additionally determines power direction through a mode, select its select or input_select entity, e.g. “Forced mode”. In the next step map its actual options for charge, discharge and idle. Do not use the general user mode selecting manual, automatic or trading operation. If omitted, device modes are left unchanged. Existing options are suggestions; values can also be entered manually while entities are offline."
         }
       },
       "edit_battery": {
@@ -158,7 +158,7 @@
       },
       "battery_modes": {
         "title": "Map device modes",
-        "description": "Choose the actual charge, discharge and idle options for {entity}. Power setpoints are zeroed before a mode change. Power is requested only after the new mode is confirmed in Home Assistant. Stopping selects the idle mode.",
+        "description": "Enter the charging, discharging and idle options for {entity}. Existing options are suggestions. Saving does not check plausibility, allowing intermediate migration states. Entity and option checks still apply before real device commands.",
         "data": {
           "charge_mode": "Charging mode",
           "discharge_mode": "Discharging mode",
@@ -173,19 +173,7 @@
     },
     "error": {
       "required_name": "Enter a name.",
-      "duplicate_name": "A battery with this name already exists.",
-      "invalid_soc_range": "Minimum SOC must be lower than maximum SOC.",
-      "distinct_sensors": "Choose separate SOC and power sensors.",
-      "entity_missing": "This entity no longer exists.",
-      "duplicate_command": "Power and mode controls must be unique per battery system and cannot also control a device-maximum entity.",
-      "grid_required": "Select an existing grid power sensor in W for self-consumption.",
-      "grid_confirmation_required": "Verify and confirm the grid measurement sign convention.",
-      "adapters_required": "Add at least one battery and confirm the verified adapter contract for every battery first.",
-      "invalid_number": "Enter a finite number within the permitted range.",
-      "command_required": "Select the requested-power entity required by this mode.",
-      "mode_unavailable": "The mode entity must be available and offer at least three distinct options.",
-      "mode_option_invalid": "Select an option currently available on the chosen mode entity.",
-      "distinct_modes": "Choose three distinct options for charging, discharging and idle."
+      "invalid_number": "Enter a finite number within the permitted range."
     },
     "abort": {
       "configuration_expired": "Setup expired. Reopen Configure."

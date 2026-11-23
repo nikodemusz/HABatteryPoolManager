@@ -54,14 +54,6 @@ def validate_numbers(data, bounds):
 
 
 
-def configured_command_entities(config):
-    keys = ("charge_command_entity", "discharge_command_entity") if config.get("command_mode", "signed") == "separate" else ("command_entity",)
-    return {config[key] for key in (*keys, "mode_entity") if config.get(key)}
-
-
-def configured_limit_entities(config):
-    return {config[key] for key in ("max_charge_entity", "max_discharge_entity") if config.get(key)}
-
 
 def battery_schema(values=None):
     values = values or {}
@@ -152,48 +144,14 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
             data["name"] = data["name"].strip()
             if not data["name"]:
                 errors["name"] = "required_name"
-            elif any(b["name"].casefold() == data["name"].casefold() and b["id"] != self._selected for b in self._batteries):
-                errors["name"] = "duplicate_name"
-            if not {"min_soc", "max_soc"}.intersection(errors) and data["min_soc"] >= data["max_soc"]:
-                errors["min_soc"] = "invalid_soc_range"
-            if data["soc_entity"] == data["power_entity"]:
-                errors["power_entity"] = "distinct_sensors"
+            # Save mappings independently so old and new adapters can coexist
+            # while a multi-battery migration is completed. Live dispatch validates
+            # the complete configuration immediately before any device commands.
             data.setdefault("command_mode", "signed")
-            command_fields = ("charge_command_entity", "discharge_command_entity") if data["command_mode"] == "separate" else ("command_entity",)
-            for field in ("soc_entity", "power_entity", *command_fields, "max_charge_entity", "max_discharge_entity", "mode_entity"):
-                if not data.get(field):
-                    if field in command_fields:
-                        errors[field] = "command_required"
-                elif self.hass.states.get(data[field]) is None:
-                    errors[field] = "entity_missing"
-            if data.get("mode_entity"):
-                state = self.hass.states.get(data["mode_entity"])
-                options = state.attributes.get("options", []) if state else []
-                if (state is None or state.state in ("unknown", "unavailable")
-                        or not isinstance(options, list) or not all(isinstance(o, str) for o in options)
-                        or len(set(options)) < 3):
-                    errors["mode_entity"] = "mode_unavailable"
-            commands = configured_command_entities(data)
-            limits = configured_limit_entities(data)
-            if len({data.get(k) for k in command_fields}) != len(command_fields) and all(data.get(k) for k in command_fields):
-                errors[command_fields[-1]] = "duplicate_command"
-            conflicts = commands & limits
-            others = [b for b in self._batteries if b["id"] != self._selected]
-            for entry in self.hass.config_entries.async_entries(DOMAIN):
-                if entry.entry_id != self.config_entry.entry_id:
-                    others.extend(entry.options.get(CONF_BATTERIES, []))
-            for other in others:
-                other_commands = configured_command_entities(other)
-                other_limits = configured_limit_entities(other)
-                conflicts |= commands & (other_commands | other_limits)
-                conflicts |= limits & other_commands
-            for field in (*command_fields, "max_charge_entity", "max_discharge_entity", "mode_entity"):
-                if data.get(field) in conflicts:
-                    errors[field] = "duplicate_command"
             if not errors:
                 data["id"] = existing.get("id", uuid4().hex)
                 if data["command_mode"] == "signed":
-                    data["command_service"] = data["command_entity"].split(".")[0] + ".set_value"
+                    data["command_service"] = data.get("command_entity", "").split(".")[0] + ".set_value" if data.get("command_entity") else ""
                     data.pop("charge_command_entity", None)
                     data.pop("discharge_command_entity", None)
                 else:
@@ -201,7 +159,7 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
                     data.pop("command_service", None)
                 if data.get("mode_entity"):
                     self._pending_battery = data
-                    self._mode_options = list(self.hass.states.get(data["mode_entity"]).attributes["options"])
+                    self._mode_options = []
                     if existing.get("mode_entity") == data["mode_entity"]:
                         for key in ("charge_mode", "discharge_mode", "idle_mode"):
                             if existing.get(key):
@@ -227,26 +185,22 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
         entity = self._pending_battery["mode_entity"]
         state = self.hass.states.get(entity)
         options = state.attributes.get("options", []) if state else []
-        errors = {}
-        if (state is None or state.state in ("unknown", "unavailable")
-                or not isinstance(options, list) or not all(isinstance(o, str) for o in options) or len(set(options)) < 3):
-            errors["base"] = "mode_unavailable"
-        else:
-            self._mode_options = list(options)
+        # Mode suggestions are optional: entities may be disabled or unavailable
+        # during migration. Typed values and temporarily overlapping roles can be saved.
+        if isinstance(options, list):
+            self._mode_options = [option for option in options if isinstance(option, str)]
+        for key in keys:
+            saved = self._pending_battery.get(key)
+            if saved and saved not in self._mode_options:
+                self._mode_options.append(saved)
         if user_input is not None:
-            for key in keys:
-                if user_input.get(key) not in self._mode_options:
-                    errors[key] = "mode_option_invalid"
-            if len({user_input.get(key) for key in keys}) != 3:
-                errors["base"] = "distinct_modes"
-            if not errors:
-                return self._save_battery({**self._pending_battery, **{key: user_input[key] for key in keys}})
+            return self._save_battery({**self._pending_battery, **{key: user_input[key] for key in keys}})
         schema = {}
         for key in keys:
             value = (user_input or self._pending_battery).get(key)
             marker = vol.Required(key, default=value) if value in self._mode_options else vol.Required(key)
-            schema[marker] = selector.SelectSelector(selector.SelectSelectorConfig(options=self._mode_options, mode=selector.SelectSelectorMode.DROPDOWN))
-        return self.async_show_form(step_id="battery_modes", data_schema=vol.Schema(schema), errors=errors,
+            schema[marker] = selector.SelectSelector(selector.SelectSelectorConfig(options=self._mode_options, custom_value=True, mode=selector.SelectSelectorMode.DROPDOWN))
+        return self.async_show_form(step_id="battery_modes", data_schema=vol.Schema(schema),
                                     description_placeholders={"entity": entity})
 
     def _selection_form(self, step_id):
@@ -286,14 +240,6 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
             user_input = dict(user_input)
             errors.update(validate_numbers(user_input, {"grid_target_w": (0, 10000)}))
             values.update(user_input)
-            if values["control_mode"] == "autonomous":
-                entity = self.hass.states.get(values.get("grid_power_entity", ""))
-                if entity is None or entity.attributes.get("unit_of_measurement") != "W":
-                    errors["grid_power_entity"] = "grid_required"
-                if not values.get("grid_confirmed"):
-                    errors["grid_confirmed"] = "grid_confirmation_required"
-            if values["live_control"] and (not self._batteries or not all(b.get("adapter_confirmed", False) for b in self._batteries)):
-                errors["live_control"] = "adapters_required"
             if not errors:
                 self._settings = {**user_input, "grid_power_entity": user_input.get("grid_power_entity")}
                 return self._save()
