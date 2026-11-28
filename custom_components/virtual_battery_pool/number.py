@@ -56,14 +56,19 @@ class PoolDirectionTarget(PoolTarget):
 
     @property
     def available(self):
-        return not self.runtime._closed and self.runtime.mode == "external" and self.runtime.separate_controls
+        return not self.runtime._closed and self.runtime.separate_controls
 
     @property
     def native_value(self):
-        return self.runtime.charge_target if self.direction == "charge" else self.runtime.discharge_target
+        return self.runtime.manual_charge_w if self.direction == "charge" else self.runtime.manual_discharge_w
 
     async def async_set_native_value(self, value):
         try:
-            await self.runtime.set_direction_target(self.direction, value)
+            await self.runtime.set_manual_power(self.direction, value)
         except ValueError as err:
             raise HomeAssistantError(str(err)) from err
+
+    @property
+    def extra_state_attributes(self):
+        return {"active": self.runtime.operation == self.direction, "expires": False,
+                "start_with": "operation", "simulation": not self.runtime.live}

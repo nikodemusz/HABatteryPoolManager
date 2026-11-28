@@ -238,7 +238,10 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
         errors = {}
         if user_input is not None:
             user_input = dict(user_input)
-            errors.update(validate_numbers(user_input, {"grid_target_w": (0, 10000)}))
+            bounds = {"grid_target_w": (0, 10000)}
+            if "ramp_w_per_minute" in user_input:
+                bounds["ramp_w_per_minute"] = (0, 60000)
+            errors.update(validate_numbers(user_input, bounds))
             values.update(user_input)
             if not errors:
                 self._settings = {**user_input, "grid_power_entity": user_input.get("grid_power_entity")}
@@ -249,6 +252,7 @@ class BatteryPoolOptionsFlow(config_entries.OptionsFlow):
             vol.Required("grid_confirmed", default=values.get("grid_confirmed", False)): selector.BooleanSelector(),
             vol.Required("grid_target_w", default=values.get("grid_target_w", 20)): number_selector(0, 10000, "W"),
         }
+        schema[vol.Required("ramp_w_per_minute", default=values.get("ramp_w_per_minute", 0))] = number_selector(0, 60000, "W/min")
         marker = vol.Optional("grid_power_entity", default=values["grid_power_entity"]) if values.get("grid_power_entity") else vol.Optional("grid_power_entity")
         schema[marker] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
         return self.async_show_form(step_id="control_settings", data_schema=vol.Schema(schema), errors=errors)

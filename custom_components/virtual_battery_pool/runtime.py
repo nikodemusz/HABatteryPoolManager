@@ -27,12 +27,15 @@ class PoolRuntime:
         keys = {f.name for f in fields(BatteryConfig)}
         self.batteries = tuple(BatteryConfig(**{k: v for k, v in b.items() if k in keys})
                                for b in entry.options.get(CONF_BATTERIES, []))
-        self.controller = PoolController(ControllerConfig(self.batteries)) if self.batteries else None
+        self.controller = PoolController(self._controller_config()) if self.batteries else None
         self.live = entry.options.get("live_control", False)
         self.mode = entry.options.get("control_mode", "external")
         self.enabled = False
         self.target = 0.0
         self.target_at = None
+        self.manual_direction = None
+        self.manual_charge_w = 300.0
+        self.manual_discharge_w = 300.0
         self.separate_controls = False
         self.control_store = control_store(hass, entry.entry_id)
         self.status = "disabled"
@@ -50,7 +53,115 @@ class PoolRuntime:
 
     async def async_initialize(self):
         preferences = await self.control_store.async_load()
-        self.separate_controls = isinstance(preferences, dict) and preferences.get("separate_controls") is True
+        preferences = preferences if isinstance(preferences, dict) else {}
+        self.separate_controls = preferences.get("separate_controls", True) is True
+        for direction in ("charge", "discharge"):
+            try:
+                value = self._validated_target(preferences.get(f"manual_{direction}_w", 300), 0)
+            except ValueError:
+                value = 300.0
+            setattr(self, f"manual_{direction}_w", value)
+
+    def _controller_config(self):
+        return ControllerConfig(self.batteries, ramp_w_per_minute=float(self.entry.options.get("ramp_w_per_minute", 0)))
+
+    @property
+    def operation(self):
+        if not self.enabled:
+            return "standby"
+        return self.manual_direction or ("automatic" if self.mode == "autonomous" else "external")
+
+    async def _save_preferences(self, **changes):
+        values = {"separate_controls": self.separate_controls,
+                  "manual_charge_w": self.manual_charge_w, "manual_discharge_w": self.manual_discharge_w}
+        await self.control_store.async_save({**values, **changes})
+
+    async def set_manual_power(self, direction, value):
+        if direction not in ("charge", "discharge"):
+            raise ValueError("Direction must be charge or discharge")
+        value = self._validated_target(value, 0)
+        async with self.lock:
+            if self._closed:
+                return
+            if not self.separate_controls:
+                raise ValueError("Enable separate charge/discharge controls first")
+            await self._save_preferences(**{f"manual_{direction}_w": value})
+            setattr(self, f"manual_{direction}_w", value)
+            apply = self.enabled and self.manual_direction == direction
+        if apply:
+            await self.update()
+        else:
+            self.notify()
+
+    async def set_operation(self, operation):
+        if operation not in ("standby", "charge", "discharge", "automatic", "external"):
+            raise ValueError("Unknown battery operation")
+        if operation == "standby":
+            await self.set_enabled(False)
+            return
+        async with self.lock:
+            if self._closed:
+                return
+            if operation == "automatic" and (not self.entry.options.get("grid_confirmed") or not self.entry.options.get("grid_power_entity")):
+                raise ValueError("Configure and confirm the grid sensor before selecting automatic operation")
+            if self.live:
+                try:
+                    self._validate_adapters()
+                except (ValueError, KeyError, TypeError) as err:
+                    self.fault = str(err) or type(err).__name__
+                    if self.enabled:
+                        await self._stop_outputs()
+                    self.enabled = False
+                    self.manual_direction = None
+                    self.target = 0
+                    self.target_at = None
+                    self.planned = 0
+                    self.outputs = {b.name: 0 for b in self.batteries}
+                    self.status = "fault"
+                    self.notify()
+                    raise ValueError(self.fault) from err
+            if operation in ("charge", "discharge") and not self.separate_controls:
+                await self._save_preferences(separate_controls=True)
+                self.separate_controls = True
+            self.fault = None
+            self.enabled = True
+            self.manual_direction = operation if operation in ("charge", "discharge") else None
+            self.mode = "autonomous" if operation == "automatic" else "external"
+            self.target = 0
+            self.target_at = None
+            if self.controller is None and self.batteries:
+                self.controller = PoolController(self._controller_config())
+            elif self.controller:
+                self.controller.config = self._controller_config()
+        await self.update()
+
+    async def set_simulation(self, simulation):
+        if not isinstance(simulation, bool):
+            raise ValueError("Simulation must be on or off")
+        async with self.lock:
+            if self._closed or simulation == (not self.live):
+                return
+            if not simulation:
+                self._validate_adapters()
+            if self.enabled or self._stop_pending:
+                await self._stop_outputs()
+            self.enabled = False
+            self.manual_direction = None
+            self.target = 0
+            self.target_at = None
+            self.planned = 0
+            self.outputs = {b.name: 0 for b in self.batteries}
+            if self._stop_pending:
+                self.status = "fault"
+                self.notify()
+                raise ValueError("Battery stop failed; simulation setting remains unchanged while stop commands are retried")
+            # Use HA's config-entry API; the existing listener safely reloads this entry.
+            try:
+                self.hass.config_entries.async_update_entry(self.entry, options={**self.entry.options, "live_control": not simulation})
+            except Exception as err:
+                raise ValueError("Could not save simulation setting; pool remains stopped") from err
+            self.live = not simulation
+        self.notify()
 
     @property
     def charge_target(self):
@@ -243,6 +354,7 @@ class PoolRuntime:
                 if self.enabled:
                     await self._stop_outputs()
                 self.enabled = False
+                self.manual_direction = None
                 self.target = 0
                 self.target_at = None
                 self.planned = 0
@@ -267,7 +379,8 @@ class PoolRuntime:
                 # Every activation starts at zero; previous manual commands are never restored.
                 self.target = 0
                 self.target_at = None
-                self.controller = PoolController(ControllerConfig(self.batteries)) if self.batteries else None
+                if self.controller is None and self.batteries:
+                    self.controller = PoolController(self._controller_config())
         await self.update()
 
     @staticmethod
@@ -292,6 +405,7 @@ class PoolRuntime:
             if self._closed:
                 return
             self._check_request_source(False)
+            self.manual_direction = None
             self.target = value
             self.target_at = dt_util.utcnow()
         await self.update()
@@ -309,6 +423,7 @@ class PoolRuntime:
                 # A zero on the inactive channel must neither stop the active
                 # request nor keep an expired request alive through a heartbeat.
                 return
+            self.manual_direction = None
             self.target = -value if direction == "charge" else value
             self.target_at = dt_util.utcnow()
         await self.update()
@@ -319,22 +434,22 @@ class PoolRuntime:
         async with self.lock:
             if self._closed:
                 return
-            if self.mode != "external":
-                raise ValueError("Separate manual controls require external control mode")
             if enabled == self.separate_controls:
                 return
             # Persist only the UI preference, never enablement or a power request.
             # A storage failure leaves the existing interface and request unchanged.
-            await self.control_store.async_save({"separate_controls": enabled})
+            await self._save_preferences(separate_controls=enabled)
             self.separate_controls = enabled
+            self.manual_direction = None
             self.target = 0
             self.target_at = None
             self.planned = 0
             self.outputs = {b.name: 0 for b in self.batteries}
-            if self.controller:
-                self.controller.plan({}, 0, dt_util.utcnow())
-            if self.enabled:
-                await self._stop_outputs()
+            if self.mode == "external":
+                if self.controller:
+                    self.controller.plan({}, 0, dt_util.utcnow())
+                if self.enabled:
+                    await self._stop_outputs()
         await self.update()
 
     async def update(self):
@@ -365,7 +480,9 @@ class PoolRuntime:
             request = 0
             reason = None
             if self.enabled and not self.fault and not error and self.controller:
-                if self.mode == "autonomous":
+                if self.manual_direction:
+                    request = -self.manual_charge_w if self.manual_direction == "charge" else self.manual_discharge_w
+                elif self.mode == "autonomous":
                     try:
                         if not self.entry.options.get("grid_confirmed", False):
                             raise ValueError("Grid import/export convention not confirmed")

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Battery Pool",
-        "description": "Create a pool, then use Configure to add batteries.",
+        "description": "Create a pool and assign batteries through Configure. Then set charging/discharging power on the pool device and select Charge, Discharge or Standby under Battery operation.",
         "data": {
           "name": "Virtual battery pool name"
         },
@@ -146,14 +146,16 @@
           "live_control": "Allow live output to devices",
           "grid_power_entity": "Whole-home grid connection power sensor (W)",
           "grid_confirmed": "Verified: positive grid import and negative export",
-          "grid_target_w": "Desired residual grid import (W)"
+          "grid_target_w": "Desired residual grid import (W)",
+          "ramp_w_per_minute": "Power increase (W/min; 0 = direct)"
         },
         "data_description": {
-          "control_mode": "External request: set the pool number entity, positive to discharge and negative to charge. Refresh at least every 60 seconds or the pool stops. Self-consumption: balance import/export using the grid sensor. Both modes require the pool switch to be on.",
-          "live_control": "Off by default: simulation only, no device power commands. Enable only after verifying every adapter. The pool still starts switched off and requires its switch to be activated. Restarting or changing options switches the pool off again.",
+          "control_mode": "Default source for Pool control and external automations. For direct charging/discharging select Charge or Discharge in the device Battery operation entity; saved power settings then apply continuously. Standby stops. Only explicit external-request mode needs a refresh within 60 seconds.",
+          "live_control": "Off = simulation. The same setting is available on the pool device through Simulation (no device commands): ON = simulation, OFF = real device commands. Changing it first stops the pool and requires a new start through Battery operation.",
           "grid_power_entity": "Self-consumption only: sensor at the shared grid connection measuring the whole home including all pool batteries. Unit W, positive = import, negative = export. Do not select PV generation, household consumption excluding batteries, or an individual battery sensor.",
           "grid_confirmed": "For self-consumption, verify that grid import is positive and export is negative in W. An incorrect convention can amplify the imbalance. All battery sensors must measure the same AC side of this grid connection.",
-          "grid_target_w": "Default 20 W residual grid import rather than exact zero export. A small positive margin reduces oscillation near zero. Only used in self-consumption mode."
+          "grid_target_w": "Default 20 W residual grid import rather than exact zero export. A small positive margin reduces oscillation near zero. Only used in self-consumption mode.",
+          "ramp_w_per_minute": "Default 0: immediately request the setpoint bounded by device and pool limits. A positive value limits increases in watts per minute. Stops and reductions are requested immediately; the 30-second reversal guard remains active."
         }
       },
       "battery_modes": {
@@ -202,7 +204,7 @@
         "name": "Measured AC power"
       },
       "planned": {
-        "name": "Planned AC power"
+        "name": "Limited power setpoint"
       },
       "status": {
         "name": "Control status",
@@ -226,10 +228,10 @@
         "name": "Power request (+ discharge / − charge)"
       },
       "charge_target": {
-        "name": "Charging power request"
+        "name": "Charging power"
       },
       "discharge_target": {
-        "name": "Discharging power request"
+        "name": "Discharging power"
       }
     },
     "switch": {
@@ -238,6 +240,21 @@
       },
       "separate_controls": {
         "name": "Separate charge/discharge controls"
+      },
+      "simulation": {
+        "name": "Simulation (no device commands)"
+      }
+    },
+    "select": {
+      "operation": {
+        "name": "Battery operation",
+        "state": {
+          "standby": "Standby",
+          "charge": "Charge",
+          "discharge": "Discharge",
+          "automatic": "Automatic (self-consumption)",
+          "external": "External request (60 s)"
+        }
       }
     }
   }

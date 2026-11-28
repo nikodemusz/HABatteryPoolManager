@@ -92,3 +92,11 @@ def test_nonfinite_readings_and_requests_stop():
         rs = readings()
         rs['venus_c'] = BatteryReading(50, value, NOW)
         assert controller.plan(rs, 500, NOW).pool_soc is None
+
+
+def test_zero_ramp_applies_bounded_request_immediately():
+    controller = PoolController(ControllerConfig(setup_controller().config.batteries, ramp_w_per_minute=0))
+    plan = controller.plan(readings(), -1300, NOW)
+    assert sum(c.power_w for c in plan.commands) == 1300
+    assert all(c.power_w <= 800 for c in plan.commands)
+    assert controller.plan(readings(), 1300, NOW + timedelta(seconds=1)).reason == 'direction_reversal_guard'

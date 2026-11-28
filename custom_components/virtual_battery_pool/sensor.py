@@ -33,5 +33,7 @@ class PoolSensor(PoolEntity, SensorEntity):
         if self.key == "status":
             return {"simulation": not self.runtime.live, "mode": self.runtime.mode,
                     "fault": self.runtime.fault, "input_error": self.runtime.input_error, "battery_plan_w": self.runtime.outputs,
-                    "target_timeout_seconds": 60, "control_interface": self.runtime.control_interface}
+                    "target_timeout_seconds": None if self.runtime.manual_direction else 60, "control_interface": self.runtime.control_interface,
+                    "operation": self.runtime.operation, "manual_request": self.runtime.manual_direction is not None,
+                    "ramp_w_per_minute": self.runtime.controller.config.ramp_w_per_minute if self.runtime.controller else 0}
         return None

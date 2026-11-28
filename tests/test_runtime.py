@@ -34,7 +34,7 @@ async def rig(tmp_path, monkeypatch):
             raise ValueError('Device rejected command')
         hass.states.async_set(entity, str(value), attrs)
     hass.services.async_register('number', 'set_value', write)
-    entry = SimpleNamespace(entry_id='pool', title='Pool', options={'batteries': [asdict(b) for b in batteries]})
+    entry = SimpleNamespace(entry_id='pool', title='Pool', options={'batteries': [asdict(b) for b in batteries], 'ramp_w_per_minute': 300})
     r = PoolRuntime(hass, entry)
     hass.data[DOMAIN] = {'pool': r}
     yield SimpleNamespace(hass=hass, clock=clock, runtime=r, entry=entry, calls=calls, fail=fail, attrs=attrs)
@@ -706,15 +706,15 @@ async def test_pool_input_entities_follow_selected_interface(rig):
     await layout.async_turn_on()
     assert layout.is_on and not signed.available and charge.available and discharge.available
     await charge.async_set_native_value(250)
-    assert charge.native_value == 250 and discharge.native_value == 0
+    assert charge.native_value == 250 and discharge.native_value == 300
     await discharge.async_set_native_value(500)
-    assert charge.native_value == 0 and discharge.native_value == 500
+    assert charge.native_value == 250 and discharge.native_value == 500
     with pytest.raises(HomeAssistantError):
         await signed.async_set_native_value(100)
     await layout.async_turn_off()
     assert signed.available and r.target == 0
     r.mode = 'autonomous'
-    assert not signed.available and not charge.available and not discharge.available and not layout.available
+    assert not signed.available and not charge.available and not discharge.available and layout.available
 
 
 @pytest.mark.asyncio
@@ -759,3 +759,136 @@ async def test_separate_charge_request_stops_at_soc_ceiling_and_on_expiry(rig):
     assert r.status == 'target_expired' and r.planned == 0
     assert rig.hass.states.get(device.entity).state == 'standby'
     assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]
+
+
+@pytest.mark.asyncio
+async def test_direct_operation_latches_power_without_60_second_expiry(rig, monkeypatch):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    rig.entry.options['ramp_w_per_minute'] = 0
+    await r.set_separate_controls(True)
+    await r.set_manual_power('charge', 100)
+    assert not r.enabled and rig.calls == []
+    await r.set_operation('charge')
+    assert r.enabled and r.operation == 'charge' and r.planned == -100
+    assert rig.hass.states.get('number.charge').state == '100.0'
+    assert rig.hass.states.get(device.entity).state == 'charge'
+    def fresh(entity, unit, now):
+        return float(rig.hass.states.get(entity).state), now
+    monkeypatch.setattr(r, '_read', fresh)
+    rig.clock.now += timedelta(minutes=10)
+    await r.update()
+    assert r.planned == -100 and r.operation == 'charge'
+    await r.set_operation('standby')
+    assert not r.enabled and r.operation == 'standby' and r.planned == 0
+    assert rig.hass.states.get(device.entity).state == 'standby'
+    assert rig.calls[-2:] == [('number.charge', 0), ('number.discharge', 0)]
+
+
+@pytest.mark.asyncio
+async def test_direct_operation_reversal_is_guarded_even_through_standby(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    rig.entry.options['ramp_w_per_minute'] = 0
+    await r.set_separate_controls(True)
+    await r.set_manual_power('charge', 100)
+    await r.set_manual_power('discharge', 70)
+    await r.set_operation('charge')
+    rig.clock.now += timedelta(seconds=1)
+    await r.set_operation('standby')
+    await r.set_operation('discharge')
+    assert r.status == 'direction_reversal_guard' and r.planned == 0
+    rig.clock.now += timedelta(seconds=30)
+    await r.update()
+    assert r.planned == 70 and rig.hass.states.get(device.entity).state == 'discharge'
+
+
+@pytest.mark.asyncio
+async def test_direct_power_changes_apply_only_to_selected_direction(rig):
+    separate_adapter(rig)
+    r = rig.runtime
+    rig.entry.options['ramp_w_per_minute'] = 0
+    await r.set_separate_controls(True)
+    await r.set_manual_power('charge', 100)
+    await r.set_operation('charge')
+    await r.set_manual_power('discharge', 70)
+    assert r.operation == 'charge' and r.planned == -100
+    await r.set_manual_power('charge', 50)
+    assert r.planned == -50
+    await r.set_manual_power('charge', 0)
+    assert r.planned == 0
+    restored = PoolRuntime(rig.hass, rig.entry)
+    await restored.async_initialize()
+    assert restored.manual_charge_w == 0 and restored.manual_discharge_w == 70
+    assert restored.operation == 'standby' and not restored.enabled
+
+
+@pytest.mark.asyncio
+async def test_direct_operation_stops_at_soc_limit(rig):
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    rig.entry.options['ramp_w_per_minute'] = 0
+    await r.set_operation('charge')
+    rig.hass.states.async_set(r.batteries[0].soc_entity, '80', {'unit_of_measurement': '%'})
+    await r.update()
+    assert r.planned == 0 and r.status == 'soc_limit'
+    assert rig.hass.states.get(device.entity).state == 'standby'
+
+
+@pytest.mark.asyncio
+async def test_simulation_switch_saves_live_setting_but_requires_new_start(rig):
+    from unittest.mock import Mock
+    r = rig.runtime
+    rig.hass.config_entries = Mock()
+    await r.set_enabled(True)
+    rig.clock.now += timedelta(seconds=5)
+    await r.set_target(100)
+    await r.set_simulation(False)
+    assert r.live and not r.enabled and r.operation == 'standby' and r.target == 0
+    rig.hass.config_entries.async_update_entry.assert_called_once_with(rig.entry, options={**rig.entry.options, 'live_control': True})
+    assert rig.calls == []
+
+
+@pytest.mark.asyncio
+async def test_simulation_cannot_hide_a_failed_live_stop(rig, monkeypatch):
+    from unittest.mock import Mock
+    device = attach_mode(rig)
+    live(rig)
+    r = rig.runtime
+    rig.hass.config_entries = Mock()
+    rig.entry.options['ramp_w_per_minute'] = 0
+    await r.set_operation('charge')
+    original = r._write
+    async def offline(battery, value):
+        raise ValueError('offline')
+    monkeypatch.setattr(r, '_write', offline)
+    with pytest.raises(ValueError, match='stop failed'):
+        await r.set_simulation(True)
+    assert r.live and not r.enabled and r._stop_pending
+    rig.hass.config_entries.async_update_entry.assert_not_called()
+    monkeypatch.setattr(r, '_write', original)
+    await r.update()
+    assert not r._stop_pending
+
+
+@pytest.mark.asyncio
+async def test_operation_selector_can_stop_automatic_and_return_to_external(rig):
+    r = rig.runtime
+    rig.entry.options.update(grid_confirmed=True, grid_power_entity='sensor.grid')
+    rig.hass.states.async_set('sensor.grid', '500', {'unit_of_measurement': 'W'})
+    await r.set_operation('automatic')
+    assert r.operation == 'automatic' and r.planned > 0
+    await r.set_operation('standby')
+    assert r.operation == 'standby' and r.planned == 0
+    await r.set_operation('external')
+    assert r.operation == 'external' and r.status == 'target_expired'
+
+
+@pytest.mark.asyncio
+async def test_automatic_operation_requires_configured_grid(rig):
+    with pytest.raises(ValueError, match='grid sensor'):
+        await rig.runtime.set_operation('automatic')
+    assert not rig.runtime.enabled and rig.calls == []

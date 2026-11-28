@@ -6,7 +6,7 @@ from .entity import PoolEntity
 
 async def async_setup_entry(hass, entry, async_add_entities):
     runtime = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([PoolEnable(runtime), PoolSeparateControls(runtime)])
+    async_add_entities([PoolEnable(runtime), PoolSeparateControls(runtime), PoolSimulation(runtime)])
 
 
 class PoolEnable(PoolEntity, SwitchEntity):
@@ -37,7 +37,7 @@ class PoolSeparateControls(PoolEntity, SwitchEntity):
 
     @property
     def available(self):
-        return not self.runtime._closed and self.runtime.mode == "external"
+        return not self.runtime._closed
 
     @property
     def is_on(self):
@@ -52,5 +52,28 @@ class PoolSeparateControls(PoolEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs):
         try:
             await self.runtime.set_separate_controls(False)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+
+
+class PoolSimulation(PoolEntity, SwitchEntity):
+    _attr_icon = "mdi:test-tube"
+
+    def __init__(self, runtime):
+        super().__init__(runtime, "simulation", "Simulation (no device commands)")
+
+    @property
+    def is_on(self):
+        return not self.runtime.live
+
+    async def async_turn_on(self, **kwargs):
+        try:
+            await self.runtime.set_simulation(True)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def async_turn_off(self, **kwargs):
+        try:
+            await self.runtime.set_simulation(False)
         except ValueError as err:
             raise HomeAssistantError(str(err)) from err

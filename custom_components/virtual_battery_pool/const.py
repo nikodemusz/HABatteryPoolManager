@@ -8,7 +8,7 @@ CONF_MODE = "mode"
 MODE_AUTONOMOUS = "autonomous"
 MODE_EXTERNAL = "external"
 MODE_SIMULATION = "simulation"
-PLATFORMS = ["sensor", "number", "switch"]
+PLATFORMS = ["sensor", "number", "switch", "select"]
 TICK_SECONDS = 5
 TARGET_TIMEOUT = 60
 

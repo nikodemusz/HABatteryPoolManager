@@ -58,7 +58,7 @@ class PoolController:
                 return self._zero("direction_reversal_guard", soc, now)
         elapsed = self.config.command_interval_seconds if self._last_at is None else max(0, min(
             (now - self._last_at).total_seconds(), self.config.command_interval_seconds))
-        remaining = min(abs(requested_power_w), self._last_total + self.config.ramp_w_per_minute * elapsed / 60)
+        remaining = abs(requested_power_w) if self.config.ramp_w_per_minute == 0 else min(abs(requested_power_w), self._last_total + self.config.ramp_w_per_minute * elapsed / 60)
         allocations = {b.name: 0.0 for b in self.config.batteries}
         candidates = [b for b in self.config.batteries if (
             readings[b.name].soc < b.max_soc if direction == Direction.CHARGE else readings[b.name].soc > b.min_soc)]
@@ -79,7 +79,7 @@ class PoolController:
 
     def _configuration_safe(self):
         c = self.config
-        return (math.isfinite(c.ramp_w_per_minute) and c.ramp_w_per_minute > 0
+        return (math.isfinite(c.ramp_w_per_minute) and c.ramp_w_per_minute >= 0
                 and c.command_interval_seconds > 0 and c.stale_after_seconds > 0
                 and math.isfinite(c.deadband_w) and c.deadband_w >= 0 and c.reversal_guard_seconds >= 0
                 and len({b.name for b in c.batteries}) == len(c.batteries)
